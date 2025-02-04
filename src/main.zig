@@ -3,6 +3,7 @@ const Lexer = @import("lexer.zig").Lexer;
 const Parser = @import("parser.zig").Parser;
 const Generator = @import("gen.zig").Generator;
 const Emitter = @import("emission.zig").Emitter;
+const prettyprinter = @import("prettyprinter.zig");
 
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
@@ -42,13 +43,15 @@ pub fn main() !void {
     lexer.scan();
     defer lexer.deinit();
 
-    var parser = Parser.init(lexer.tokens.items);
-    const program_definition = parser.parse();
+    var parser = Parser.init(lexer.tokens.items, allocator);
+    var program_definition = parser.parse();
+    defer program_definition.deinit(allocator);
+    prettyprinter.printProgram(program_definition);
 
-    var generator = Generator.init(program_definition);
-    var program = try generator.generate(allocator);
-    defer program.deinit();
+    // var generator = Generator.init(program_definition);
+    // var program = try generator.generate(allocator);
+    // defer program.deinit();
 
-    var emitter = Emitter.init(program);
-    try emitter.write(file_path);
+    // var emitter = Emitter.init(program);
+    // try emitter.write(file_path);
 }

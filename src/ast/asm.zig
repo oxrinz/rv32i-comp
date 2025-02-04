@@ -26,7 +26,6 @@ pub const Program = struct {
     allocator: std.mem.Allocator,
 
     pub fn deinit(self: *Program) void {
-        // Free each instruction's strings
         for (self.function.instructions) |instruction| {
             switch (instruction) {
                 .lui => |lui| {
@@ -39,10 +38,8 @@ pub const Program = struct {
             }
         }
 
-        // Free the instructions array itself
         self.allocator.free(self.function.instructions);
 
-        // Free the function identifier
         self.allocator.free(self.function.identifier);
     }
 };

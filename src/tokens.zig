@@ -1,18 +1,29 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 
+pub fn is_binary_operator(token: TokenType) bool {
+    switch (token) {
+        .PLUS, .MINUS, .STAR, .SLASH, .PERCENTAGE => return true,
+        else => return false,
+    }
+}
+
 pub const TokenType = enum {
     LEFT_PAREN,
     RIGHT_PAREN,
     LEFT_BRACE,
     RIGHT_BRACE,
+
     COMMA,
     DOT,
+
     MINUS,
     PLUS,
+
     SEMICOLON,
     SLASH,
     STAR,
+    PERCENTAGE,
     //
     BANG,
     BANG_EQUAL,
