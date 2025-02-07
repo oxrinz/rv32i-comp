@@ -4,6 +4,12 @@ const Token = tokens_script.Token;
 const TokenType = tokens_script.TokenType;
 const c_ast = @import("ast/c.zig");
 
+// zig whines without this
+const ParserError = error{
+    OutOfMemory,
+    UnexpectedToken,
+};
+
 pub const Parser = struct {
     tokens: []const Token,
     cursor: usize,
@@ -56,21 +62,19 @@ pub const Parser = struct {
         };
     }
 
-    fn parse_expression(self: *Parser, min_prec: i16) !*c_ast.Expression {
-        self.expect(.NUMBER);
+    fn parse_expression(self: *Parser, min_prec: i16) ParserError!*c_ast.Expression {
         var left = try self.parse_factor();
 
-        while (if (tokens_script.is_binary_operator(self.tokens[self.cursor].type))
-            self.precedence(self.tokens[self.cursor]) >= min_prec
-        else
-            false)
+        while (self.cursor < self.tokens.len and
+            tokens_script.is_binary_operator(self.tokens[self.cursor].type))
         {
-            std.debug.print("rolling\n", .{});
-            const operator = self.parse_binop();
+            const curr_prec = self.precedence(self.tokens[self.cursor]);
+            if (curr_prec < min_prec) break;
 
+            const operator = self.parse_binop();
             self.cursor += 1;
 
-            const right = try self.parse_expression(self.precedence(self.tokens[self.cursor - 1]) + 1);
+            const right = try self.parse_expression(curr_prec + 1);
 
             const new_expr = try self.allocator.create(c_ast.Expression);
             new_expr.* = .{
@@ -82,31 +86,45 @@ pub const Parser = struct {
             };
 
             left = new_expr;
-            self.cursor += 1;
         }
 
         return left;
     }
 
-    fn parse_factor(self: *Parser) !*c_ast.Expression {
+    fn parse_factor(self: *Parser) ParserError!*c_ast.Expression {
         const expr = try self.allocator.create(c_ast.Expression);
 
         switch (self.tokens[self.cursor].type) {
-            .NUMBER => expr.* = .{
-                .factor = .{
-                    .constant = self.tokens[self.cursor].literal.?.number,
-                },
+            .NUMBER => {
+                expr.* = .{
+                    .factor = .{
+                        .constant = self.tokens[self.cursor].literal.?.number,
+                    },
+                };
+                self.cursor += 1;
+            },
+            .LEFT_PAREN => {
+                self.cursor += 1;
+                const inner_expr = try self.parse_expression(0);
+                self.expect(.RIGHT_PAREN);
+                self.cursor += 1;
+
+                expr.* = .{
+                    .factor = .{
+                        .expression = inner_expr,
+                    },
+                };
             },
             else => unreachable,
         }
-        self.cursor += 1;
+
         return expr;
     }
 
     fn parse_binop(self: *Parser) c_ast.BinaryOperator {
         switch (self.tokens[self.cursor].type) {
             .PLUS => return .Add,
-            .MINUS => return .Divide,
+            .MINUS => return .Subtract,
             .STAR => return .Multiply,
             .SLASH => return .Divide,
             .PERCENTAGE => return .Remainder,

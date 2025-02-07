@@ -8,6 +8,8 @@ pub const Emitter = struct {
         return .{ .program = program };
     }
 
+    fn reg_to_string() []const u8 {}
+
     pub fn write(self: *Emitter, out_name: []const u8) !void {
         const dirname = std.fs.path.dirname(out_name) orelse ".";
         const stem = std.fs.path.stem(out_name);
@@ -26,18 +28,32 @@ pub const Emitter = struct {
 
         for (self.program.function.instructions) |instruction| {
             switch (instruction) {
-                .lui => |lui| {
-                    const imm = @as(i32, @intCast(lui.imm));
-                    try std.fmt.format(file.writer(), "lui {s} {}\n", .{
-                        lui.destination,
-                        imm,
+                .add => |add| {
+                    try std.fmt.format(file.writer(), "add {s} {s} {s}\n", .{
+                        add.destination.to_string(),
+                        add.source1.to_string(),
+                        add.source2.to_string(),
+                    });
+                },
+                .sub => |add| {
+                    try std.fmt.format(file.writer(), "sub {s} {s} {s}\n", .{
+                        add.destination.to_string(),
+                        add.source1.to_string(),
+                        add.source2.to_string(),
                     });
                 },
                 .addi => |addi| {
                     const imm = @as(i32, @intCast(addi.imm));
                     try std.fmt.format(file.writer(), "addi {s} {s} {}\n", .{
-                        addi.destination,
-                        addi.source,
+                        addi.destination.to_string(),
+                        addi.source.to_string(),
+                        imm,
+                    });
+                },
+                .lui => |lui| {
+                    const imm = @as(i32, @intCast(lui.imm));
+                    try std.fmt.format(file.writer(), "lui {s} {}\n", .{
+                        lui.destination.to_string(),
                         imm,
                     });
                 },

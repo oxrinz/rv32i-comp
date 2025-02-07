@@ -1,19 +1,46 @@
 const std = @import("std");
 
-const Lui = struct {
-    destination: []const u8,
-    imm: u20,
+pub const Reg = enum {
+    zero,
+    t0,
+    t1,
+    a0,
+
+    pub fn to_string(self: Reg) []const u8 {
+        return @tagName(self);
+    }
+};
+
+const Add = struct {
+    source1: Reg,
+    source2: Reg,
+    destination: Reg,
+};
+
+const Sub = struct {
+    source1: Reg,
+    source2: Reg,
+    destination: Reg,
 };
 
 const Addi = struct {
-    source: []const u8,
-    destination: []const u8,
+    source: Reg,
+    destination: Reg,
     imm: u12,
 };
 
+const Lui = struct {
+    destination: Reg,
+    imm: u20,
+};
+
 pub const Instruction = union(enum) {
-    lui: Lui,
+    add: Add,
+    sub: Sub,
+
     addi: Addi,
+
+    lui: Lui,
 };
 
 pub const FunctionDefinition = struct {
@@ -23,23 +50,4 @@ pub const FunctionDefinition = struct {
 
 pub const Program = struct {
     function: FunctionDefinition,
-    allocator: std.mem.Allocator,
-
-    pub fn deinit(self: *Program) void {
-        for (self.function.instructions) |instruction| {
-            switch (instruction) {
-                .lui => |lui| {
-                    self.allocator.free(lui.destination);
-                },
-                .addi => |addi| {
-                    self.allocator.free(addi.destination);
-                    self.allocator.free(addi.source);
-                },
-            }
-        }
-
-        self.allocator.free(self.function.instructions);
-
-        self.allocator.free(self.function.identifier);
-    }
 };
