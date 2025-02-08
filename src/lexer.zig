@@ -142,11 +142,15 @@ pub const Lexer = struct {
             '+' => .PLUS,
             ';' => .SEMICOLON,
             '*' => .STAR,
+            '&' => .AMPERSAND,
+            '|' => .PIPE,
+            '^' => .CARET,
 
             '!' => if (self.match('=')) .BANG_EQUAL else .BANG,
             '=' => if (self.match('=')) .EQUAL_EQUAL else .EQUAL,
-            '<' => if (self.match('=')) .LESS_EQUAL else .LESS,
-            '>' => if (self.match('=')) .GREATER_EQUAL else .GREATER,
+            '<' => if (self.match('=')) .LESS_EQUAL else if (self.match('<')) .LEFT_SHIFT else .LESS,
+
+            '>' => if (self.match('=')) .GREATER_EQUAL else if (self.match('>')) .RIGHT_SHIFT else .GREATER,
 
             '/' => blk: {
                 const result: TokenType = if (self.match('/')) {

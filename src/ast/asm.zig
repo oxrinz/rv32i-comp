@@ -12,30 +12,6 @@ pub const Reg = enum {
     }
 };
 
-const Add = struct {
-    source1: Reg,
-    source2: Reg,
-    destination: Reg,
-};
-
-const Sub = struct {
-    source1: Reg,
-    source2: Reg,
-    destination: Reg,
-};
-
-const Mul = struct {
-    source1: Reg,
-    source2: Reg,
-    destination: Reg,
-};
-
-const Div = struct {
-    source1: Reg,
-    source2: Reg,
-    destination: Reg,
-};
-
 const Addi = struct {
     source: Reg,
     destination: Reg,
@@ -47,11 +23,46 @@ const Lui = struct {
     imm: u20,
 };
 
+pub const RType_Inst = enum {
+    ADD,
+    SUB,
+    XOR,
+    OR,
+    AND,
+    SLL,
+    SRL,
+    SRA,
+    SLT,
+    SLTU,
+    MUL,
+    MULH,
+    MULSU,
+    MULU,
+    DIV,
+    DIVU,
+    REM,
+    REMU,
+
+    pub fn to_string(self: RType_Inst) []const u8 {
+        const str = @tagName(self);
+        comptime var max_len = 0;
+        inline for (@typeInfo(RType_Inst).Enum.fields) |field| {
+            max_len = @max(max_len, field.name.len);
+        }
+        var buf: [max_len]u8 = undefined;
+        return std.ascii.lowerString(&buf, str);
+    }
+};
+
+const RType = struct {
+    instr: RType_Inst,
+    source1: Reg,
+    source2: Reg,
+    destination: Reg,
+};
+
 pub const Instruction = union(enum) {
-    add: Add,
-    sub: Sub,
-    mul: Mul,
-    div: Div,
+    rtype: RType,
 
     addi: Addi,
 

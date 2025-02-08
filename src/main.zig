@@ -13,6 +13,13 @@ pub fn main() !void {
     defer arena.deinit();
     const allocator = arena.allocator();
 
+    const debug_str = std.process.getEnvVarOwned(allocator, "DEBUG") catch "";
+    defer if (debug_str.len > 0) allocator.free(debug_str);
+    const debug_value = if (debug_str.len > 0)
+        std.fmt.parseInt(u8, debug_str, 10) catch 0
+    else
+        0;
+
     const args = try std.process.argsAlloc(allocator);
     if (args.len != 2) {
         std.debug.print("Usage: {s} <source.c>\n", .{args[0]});
@@ -40,10 +47,26 @@ pub fn main() !void {
     var lexer = Lexer.init(allocator, source);
     lexer.scan();
 
+    if (debug_value == 1) {
+        std.debug.print("\n======== Tokens ========\n", .{});
+        for (lexer.tokens.items) |token| {
+            std.debug.print("{s} '{?}' at line {d}\n", .{
+                @tagName(token.type),
+                token.literal,
+                token.line,
+            });
+        }
+        std.debug.print("========================\n", .{});
+    }
+
     var parser = Parser.init(lexer.tokens.items, allocator);
     const program_definition = parser.parse();
 
-    prettyprinter.printProgram(program_definition);
+    if (debug_value == 1) {
+        std.debug.print("\n======== Program ========\n", .{});
+        prettyprinter.printProgram(program_definition);
+        std.debug.print("===========================\n", .{});
+    }
 
     var generator = Generator.init(program_definition, allocator);
     const program = try generator.generate();

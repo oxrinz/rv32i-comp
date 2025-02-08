@@ -15,6 +15,15 @@ pub const Generator = struct {
         };
     }
 
+    fn append_rtype(self: *Generator, instr: asm_ast.RType_Inst, source2: asm_ast.Reg) void {
+        self.instruction_buffer.append(.{ .rtype = .{
+            .instr = instr,
+            .destination = asm_ast.Reg.t2,
+            .source1 = asm_ast.Reg.t2,
+            .source2 = source2,
+        } }) catch @panic("Failed to append instruction");
+    }
+
     fn getNextTempReg(self: *Generator) asm_ast.Reg {
         const reg = switch (self.next_temp_reg) {
             0 => asm_ast.Reg.t0,
@@ -79,40 +88,31 @@ pub const Generator = struct {
 
                     switch (binary.operator) {
                         .Add => {
-                            try self.instruction_buffer.append(.{
-                                .add = .{
-                                    .destination = asm_ast.Reg.t2,
-                                    .source1 = asm_ast.Reg.t2,
-                                    .source2 = temp_reg,
-                                },
-                            });
+                            self.append_rtype(.ADD, temp_reg);
                         },
                         .Subtract => {
-                            try self.instruction_buffer.append(.{
-                                .sub = .{
-                                    .destination = asm_ast.Reg.t2,
-                                    .source1 = asm_ast.Reg.t2,
-                                    .source2 = temp_reg,
-                                },
-                            });
+                            self.append_rtype(.SUB, temp_reg);
                         },
                         .Multiply => {
-                            try self.instruction_buffer.append(.{
-                                .mul = .{
-                                    .destination = asm_ast.Reg.t2,
-                                    .source1 = asm_ast.Reg.t2,
-                                    .source2 = temp_reg,
-                                },
-                            });
+                            self.append_rtype(.MUL, temp_reg);
                         },
                         .Divide => {
-                            try self.instruction_buffer.append(.{
-                                .div = .{
-                                    .destination = asm_ast.Reg.t2,
-                                    .source1 = asm_ast.Reg.t2,
-                                    .source2 = temp_reg,
-                                },
-                            });
+                            self.append_rtype(.DIV, temp_reg);
+                        },
+                        .Bitwise_AND => {
+                            self.append_rtype(.AND, temp_reg);
+                        },
+                        .Bitwise_OR => {
+                            self.append_rtype(.OR, temp_reg);
+                        },
+                        .Bitwise_XOR => {
+                            self.append_rtype(.XOR, temp_reg);
+                        },
+                        .Left_Shift => {
+                            self.append_rtype(.SLL, temp_reg);
+                        },
+                        .Right_Shift => {
+                            self.append_rtype(.SRL, temp_reg);
                         },
                         else => @panic("Unsupported binary operator"),
                     }
@@ -124,7 +124,8 @@ pub const Generator = struct {
 
                 const right_reg = self.getNextTempReg();
                 try self.instruction_buffer.append(.{
-                    .add = .{
+                    .rtype = .{
+                        .instr = .ADD,
                         .destination = right_reg,
                         .source1 = asm_ast.Reg.t2,
                         .source2 = asm_ast.Reg.zero,
@@ -133,42 +134,35 @@ pub const Generator = struct {
 
                 _ = try self.generateExpression(binary.left.*);
 
+                std.debug.print("binop: {}", .{binary.operator});
+
                 switch (binary.operator) {
                     .Add => {
-                        try self.instruction_buffer.append(.{
-                            .add = .{
-                                .destination = asm_ast.Reg.t2,
-                                .source1 = asm_ast.Reg.t2,
-                                .source2 = right_reg,
-                            },
-                        });
+                        self.append_rtype(.ADD, right_reg);
                     },
                     .Subtract => {
-                        try self.instruction_buffer.append(.{
-                            .sub = .{
-                                .destination = asm_ast.Reg.t2,
-                                .source1 = asm_ast.Reg.t2,
-                                .source2 = right_reg,
-                            },
-                        });
+                        self.append_rtype(.SUB, right_reg);
                     },
                     .Multiply => {
-                        try self.instruction_buffer.append(.{
-                            .mul = .{
-                                .destination = asm_ast.Reg.t2,
-                                .source1 = asm_ast.Reg.t2,
-                                .source2 = right_reg,
-                            },
-                        });
+                        self.append_rtype(.MUL, right_reg);
                     },
                     .Divide => {
-                        try self.instruction_buffer.append(.{
-                            .div = .{
-                                .destination = asm_ast.Reg.t2,
-                                .source1 = asm_ast.Reg.t2,
-                                .source2 = right_reg,
-                            },
-                        });
+                        self.append_rtype(.DIV, right_reg);
+                    },
+                    .Bitwise_AND => {
+                        self.append_rtype(.AND, right_reg);
+                    },
+                    .Bitwise_OR => {
+                        self.append_rtype(.OR, right_reg);
+                    },
+                    .Bitwise_XOR => {
+                        self.append_rtype(.XOR, right_reg);
+                    },
+                    .Left_Shift => {
+                        self.append_rtype(.SLL, right_reg);
+                    },
+                    .Right_Shift => {
+                        self.append_rtype(.SRL, right_reg);
                     },
                     else => @panic("Unsupported binary operator"),
                 }

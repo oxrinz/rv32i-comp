@@ -55,6 +55,7 @@ pub const Parser = struct {
         // ??????????????
         // ??????????????
         const expr_ptr = self.parse_expression(0) catch @panic("failed");
+        std.debug.print("parsing exp: {}\n", .{expr_ptr});
         const expr = expr_ptr.*;
         self.allocator.destroy(expr_ptr);
         return .{
@@ -129,6 +130,12 @@ pub const Parser = struct {
             .STAR => return .Multiply,
             .SLASH => return .Divide,
             .PERCENTAGE => return .Remainder,
+
+            .AMPERSAND => return .Bitwise_AND,
+            .PIPE => return .Bitwise_OR,
+            .CARET => return .Bitwise_XOR,
+            .LEFT_SHIFT => return .Left_Shift,
+            .RIGHT_SHIFT => return .Right_Shift,
             else => unreachable,
         }
     }
@@ -136,6 +143,10 @@ pub const Parser = struct {
     fn precedence(self: *Parser, token: Token) i16 {
         _ = self;
         switch (token.type) {
+            .LEFT_SHIFT, .RIGHT_SHIFT => return 48,
+            .AMPERSAND => return 47,
+            .CARET => return 46,
+            .PIPE => return 45,
             .PLUS, .MINUS => return 45,
             .STAR, .SLASH, .PERCENTAGE => return 50,
             else => unreachable,

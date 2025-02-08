@@ -19,6 +19,11 @@ pub fn printExpression(exp: c_ast.Expression, indent: usize) void {
                 .Multiply => "*",
                 .Divide => "/",
                 .Remainder => "%",
+                .Bitwise_AND => "&",
+                .Bitwise_OR => "|",
+                .Bitwise_XOR => "^",
+                .Left_Shift => "<<",
+                .Right_Shift => ">>",
             };
             std.debug.print("Binary Op: {s}\n", .{op});
             std.debug.print("{s}Left:\n", .{spaces[0 .. indent + 2]});

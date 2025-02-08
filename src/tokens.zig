@@ -3,7 +3,7 @@ const Allocator = std.mem.Allocator;
 
 pub fn is_binary_operator(token: TokenType) bool {
     switch (token) {
-        .PLUS, .MINUS, .STAR, .SLASH, .PERCENTAGE => return true,
+        .PLUS, .MINUS, .STAR, .SLASH, .PERCENTAGE, .AMPERSAND, .PIPE, .CARET, .LEFT_SHIFT, .RIGHT_SHIFT => return true,
         else => return false,
     }
 }
@@ -24,7 +24,7 @@ pub const TokenType = enum {
     SLASH,
     STAR,
     PERCENTAGE,
-    //
+
     BANG,
     BANG_EQUAL,
     EQUAL,
@@ -33,14 +33,20 @@ pub const TokenType = enum {
     GREATER_EQUAL,
     LESS,
     LESS_EQUAL,
-    //
+
     IDENTIFIER,
     STRING,
     NUMBER,
-    //
+
     INT,
     VOID,
     RETURN,
+
+    AMPERSAND,
+    PIPE,
+    CARET,
+    LEFT_SHIFT,
+    RIGHT_SHIFT,
 };
 
 pub const Literal = union(enum) { string: []const u8, number: i32 };

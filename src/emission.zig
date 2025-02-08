@@ -28,32 +28,12 @@ pub const Emitter = struct {
 
         for (self.program.function.instructions) |instruction| {
             switch (instruction) {
-                .add => |add| {
-                    try std.fmt.format(file.writer(), "add {s} {s} {s}\n", .{
-                        add.destination.to_string(),
-                        add.source1.to_string(),
-                        add.source2.to_string(),
-                    });
-                },
-                .sub => |sub| {
-                    try std.fmt.format(file.writer(), "sub {s} {s} {s}\n", .{
-                        sub.destination.to_string(),
-                        sub.source1.to_string(),
-                        sub.source2.to_string(),
-                    });
-                },
-                .mul => |mul| {
-                    try std.fmt.format(file.writer(), "mul {s} {s} {s}\n", .{
-                        mul.destination.to_string(),
-                        mul.source1.to_string(),
-                        mul.source2.to_string(),
-                    });
-                },
-                .div => |div| {
-                    try std.fmt.format(file.writer(), "div {s} {s} {s}\n", .{
-                        div.destination.to_string(),
-                        div.source1.to_string(),
-                        div.source2.to_string(),
+                .rtype => |r| {
+                    try std.fmt.format(file.writer(), "{s} {s} {s} {s}\n", .{
+                        r.instr.to_string(),
+                        r.destination.to_string(),
+                        r.source1.to_string(),
+                        r.source2.to_string(),
                     });
                 },
                 .addi => |addi| {

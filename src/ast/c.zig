@@ -6,6 +6,12 @@ pub const BinaryOperator = enum {
     Multiply,
     Divide,
     Remainder,
+
+    Bitwise_AND,
+    Bitwise_OR,
+    Bitwise_XOR,
+    Left_Shift,
+    Right_Shift,
 };
 
 pub const Binary = struct {
