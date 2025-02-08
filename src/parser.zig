@@ -143,6 +143,10 @@ pub const Parser = struct {
     fn precedence(self: *Parser, token: Token) i16 {
         _ = self;
         switch (token.type) {
+            .PIPE_PIPE => return 5,
+            .AMPERSAND_AMPERSAND => return 10,
+            .EQUAL, .BANG_EQUAL => return 30,
+            .LESS, .LESS_EQUAL, .GREATER, .GREATER_EQUAL => return 35,
             .LEFT_SHIFT, .RIGHT_SHIFT => return 48,
             .AMPERSAND => return 47,
             .CARET => return 46,

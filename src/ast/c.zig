@@ -12,6 +12,15 @@ pub const BinaryOperator = enum {
     Bitwise_XOR,
     Left_Shift,
     Right_Shift,
+
+    Less,
+    Less_Or_Equal,
+    Greater,
+    Greater_Or_Equal,
+    Equal,
+    Not_Equal,
+    And,
+    Or,
 };
 
 pub const Binary = struct {
