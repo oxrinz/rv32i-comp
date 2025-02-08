@@ -19,6 +19,7 @@ pub const Generator = struct {
         const reg = switch (self.next_temp_reg) {
             0 => asm_ast.Reg.t0,
             1 => asm_ast.Reg.t1,
+            2 => asm_ast.Reg.t2,
             else => @panic("Out of temporary registers"),
         };
         self.next_temp_reg += 1;
@@ -52,53 +53,128 @@ pub const Generator = struct {
         });
     }
 
-    fn generateExpression(self: *Generator, exp: c_ast.Expression) !asm_ast.Reg {
+    fn generateFactor(self: *Generator, factor: c_ast.Factor) error{OutOfMemory}!asm_ast.Reg {
+        switch (factor) {
+            .constant => |constant| {
+                try self.loadImmediate(constant, asm_ast.Reg.t2);
+                return asm_ast.Reg.t2;
+            },
+            .expression => |expr| {
+                return try self.generateExpression(expr.*);
+            },
+        }
+    }
+
+    fn generateExpression(self: *Generator, exp: c_ast.Expression) error{OutOfMemory}!asm_ast.Reg {
         switch (exp) {
             .factor => |factor| {
-                switch (factor) {
-                    .constant => |constant| {
-                        const dest_reg = self.getNextTempReg();
-                        try self.loadImmediate(constant, dest_reg);
-                        return dest_reg;
-                    },
-                    .expression => |expr| {
-                        return try self.generateExpression(expr.*);
-                    },
-                }
+                return try self.generateFactor(factor);
             },
             .binary => |binary| {
-                const left_reg = try self.generateExpression(binary.left.*);
+                if (binary.right.* == .factor and binary.right.*.factor == .constant) {
+                    const temp_reg = self.getNextTempReg();
+                    try self.loadImmediate(binary.right.*.factor.constant, temp_reg);
 
-                const right_reg = try self.generateExpression(binary.right.*);
+                    _ = try self.generateExpression(binary.left.*);
 
-                const result_reg = asm_ast.Reg.a0;
+                    switch (binary.operator) {
+                        .Add => {
+                            try self.instruction_buffer.append(.{
+                                .add = .{
+                                    .destination = asm_ast.Reg.t2,
+                                    .source1 = asm_ast.Reg.t2,
+                                    .source2 = temp_reg,
+                                },
+                            });
+                        },
+                        .Subtract => {
+                            try self.instruction_buffer.append(.{
+                                .sub = .{
+                                    .destination = asm_ast.Reg.t2,
+                                    .source1 = asm_ast.Reg.t2,
+                                    .source2 = temp_reg,
+                                },
+                            });
+                        },
+                        .Multiply => {
+                            try self.instruction_buffer.append(.{
+                                .mul = .{
+                                    .destination = asm_ast.Reg.t2,
+                                    .source1 = asm_ast.Reg.t2,
+                                    .source2 = temp_reg,
+                                },
+                            });
+                        },
+                        .Divide => {
+                            try self.instruction_buffer.append(.{
+                                .div = .{
+                                    .destination = asm_ast.Reg.t2,
+                                    .source1 = asm_ast.Reg.t2,
+                                    .source2 = temp_reg,
+                                },
+                            });
+                        },
+                        else => @panic("Unsupported binary operator"),
+                    }
+                    self.releaseTempReg();
+                    return asm_ast.Reg.t2;
+                }
 
-                std.debug.print("\nbin op: {}\n", .{binary.operator});
+                _ = try self.generateExpression(binary.right.*);
+
+                const right_reg = self.getNextTempReg();
+                try self.instruction_buffer.append(.{
+                    .add = .{
+                        .destination = right_reg,
+                        .source1 = asm_ast.Reg.t2,
+                        .source2 = asm_ast.Reg.zero,
+                    },
+                });
+
+                _ = try self.generateExpression(binary.left.*);
 
                 switch (binary.operator) {
                     .Add => {
                         try self.instruction_buffer.append(.{
                             .add = .{
-                                .destination = result_reg,
-                                .source1 = left_reg,
+                                .destination = asm_ast.Reg.t2,
+                                .source1 = asm_ast.Reg.t2,
                                 .source2 = right_reg,
                             },
                         });
                     },
                     .Subtract => {
-                        try self.instruction_buffer.append(.{ .sub = .{
-                            .destination = result_reg,
-                            .source1 = left_reg,
-                            .source2 = right_reg,
-                        } });
+                        try self.instruction_buffer.append(.{
+                            .sub = .{
+                                .destination = asm_ast.Reg.t2,
+                                .source1 = asm_ast.Reg.t2,
+                                .source2 = right_reg,
+                            },
+                        });
+                    },
+                    .Multiply => {
+                        try self.instruction_buffer.append(.{
+                            .mul = .{
+                                .destination = asm_ast.Reg.t2,
+                                .source1 = asm_ast.Reg.t2,
+                                .source2 = right_reg,
+                            },
+                        });
+                    },
+                    .Divide => {
+                        try self.instruction_buffer.append(.{
+                            .div = .{
+                                .destination = asm_ast.Reg.t2,
+                                .source1 = asm_ast.Reg.t2,
+                                .source2 = right_reg,
+                            },
+                        });
                     },
                     else => @panic("Unsupported binary operator"),
                 }
 
                 self.releaseTempReg();
-                self.releaseTempReg();
-
-                return result_reg;
+                return asm_ast.Reg.t2;
             },
         }
     }
@@ -106,8 +182,7 @@ pub const Generator = struct {
     pub fn generate(self: *Generator) !asm_ast.Program {
         if (self.program.function.statement.type == .RETURN) {
             const result_reg = try self.generateExpression(self.program.function.statement.exp);
-
-            std.debug.assert(result_reg == .a0);
+            std.debug.assert(result_reg == .t2);
 
             return .{
                 .function = .{

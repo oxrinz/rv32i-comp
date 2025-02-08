@@ -4,6 +4,7 @@ pub const Reg = enum {
     zero,
     t0,
     t1,
+    t2,
     a0,
 
     pub fn to_string(self: Reg) []const u8 {
@@ -23,6 +24,18 @@ const Sub = struct {
     destination: Reg,
 };
 
+const Mul = struct {
+    source1: Reg,
+    source2: Reg,
+    destination: Reg,
+};
+
+const Div = struct {
+    source1: Reg,
+    source2: Reg,
+    destination: Reg,
+};
+
 const Addi = struct {
     source: Reg,
     destination: Reg,
@@ -37,6 +50,8 @@ const Lui = struct {
 pub const Instruction = union(enum) {
     add: Add,
     sub: Sub,
+    mul: Mul,
+    div: Div,
 
     addi: Addi,
 
