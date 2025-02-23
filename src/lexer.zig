@@ -142,8 +142,8 @@ pub const Lexer = struct {
             '+' => .PLUS,
             ';' => .SEMICOLON,
             '*' => .STAR,
-            '&' => if (self.match("&")) .AMPERSAND_AMPERSAND else .AMPERSAND,
-            '|' => if (self.match("|")) .PIPE_PIPE else .PIPE,
+            '&' => if (self.match('&')) .AMPERSAND_AMPERSAND else .AMPERSAND,
+            '|' => if (self.match('|')) .PIPE_PIPE else .PIPE,
             '^' => .CARET,
 
             '!' => if (self.match('=')) .BANG_EQUAL else .BANG,

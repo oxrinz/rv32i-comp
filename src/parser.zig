@@ -136,6 +136,15 @@ pub const Parser = struct {
             .CARET => return .Bitwise_XOR,
             .LEFT_SHIFT => return .Left_Shift,
             .RIGHT_SHIFT => return .Right_Shift,
+
+            .LESS => return .Less,
+            .LESS_EQUAL => return .Less_Or_Equal,
+            .GREATER => return .Greater,
+            .GREATER_EQUAL => return .Greater_Or_Equal,
+            .EQUAL => return .Equal,
+            .BANG_EQUAL => return .Not_Equal,
+            .AMPERSAND_AMPERSAND => return .And,
+            .PIPE_PIPE => return .Or,
             else => unreachable,
         }
     }
