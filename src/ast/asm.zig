@@ -7,7 +7,7 @@ pub const Reg = enum {
     t2,
     a0,
 
-    pub fn to_string(self: Reg) []const u8 {
+    pub fn toString(self: Reg) []const u8 {
         return @tagName(self);
     }
 };
@@ -22,6 +22,58 @@ const Lui = struct {
     destination: Reg,
     imm: u20,
 };
+
+pub const InstructionType = enum {
+    ADD,
+    SUB,
+    XOR,
+    OR,
+    AND,
+    SLL,
+    SRL,
+    SRA,
+    SLT,
+    SLTU,
+    MUL,
+    MULH,
+    MULSU,
+    MULU,
+    DIV,
+    DIVU,
+    REM,
+    REMU,
+
+    ADDI,
+    // SUB,
+    XORI,
+    // OR,
+    // AND,
+    // SLL,
+    // SRL,
+    // SRA,
+    // SLT,
+    // SLTU,
+    // MUL,
+    // MULH,
+    // MULSU,
+    // MULU,
+    // DIV,
+    // DIVU,
+    // REM,
+    // REMU,
+
+};
+
+pub fn convert(instr: InstructionType) union(enum) { rtype: RType_Inst, itype: IType_Inst } {
+    return switch (instr) {
+        .ADD, .SUB, .XOR, .OR, .AND, .SLL, .SRL, .SRA, .SLT, .SLTU, .MUL, .MULH, .MULSU, .MULU, .DIV, .DIVU, .REM, .REMU => .{
+            .rtype = @as(RType_Inst, @enumFromInt(@intFromEnum(instr))),
+        },
+        .ADDI, .XORI => .{
+            .itype = @as(IType_Inst, @enumFromInt(@intFromEnum(instr))),
+        },
+    };
+}
 
 pub const RType_Inst = enum {
     ADD,
@@ -43,7 +95,7 @@ pub const RType_Inst = enum {
     REM,
     REMU,
 
-    pub fn to_string(self: RType_Inst) []const u8 {
+    pub fn toString(self: RType_Inst) []const u8 {
         const str = @tagName(self);
         comptime var max_len = 0;
         inline for (@typeInfo(RType_Inst).Enum.fields) |field| {
@@ -54,6 +106,42 @@ pub const RType_Inst = enum {
     }
 };
 
+pub const IType_Inst = enum {
+    ADDI,
+    // SUB,
+    XORI,
+    // OR,
+    // AND,
+    // SLL,
+    // SRL,
+    // SRA,
+    // SLT,
+    // SLTU,
+    // MUL,
+    // MULH,
+    // MULSU,
+    // MULU,
+    // DIV,
+    // DIVU,
+    // REM,
+    // REMU,
+
+    pub fn toString(self: IType_Inst) []const u8 {
+        const str = @tagName(self);
+        comptime var max_len = 0;
+        inline for (@typeInfo(RType_Inst).Enum.fields) |field| {
+            max_len = @max(max_len, field.name.len);
+        }
+        var buf: [max_len]u8 = undefined;
+        return std.ascii.lowerString(&buf, str);
+    }
+};
+
+// pub const InstructionType = union(enum) {
+//     rtype: RType_Inst,
+//     itype: IType_Inst,
+// };
+
 const RType = struct {
     instr: RType_Inst,
     source1: Reg,
@@ -61,10 +149,17 @@ const RType = struct {
     destination: Reg,
 };
 
+const IType = struct {
+    instr: IType_Inst,
+    source: Reg,
+    destination: Reg,
+    immediate: i32,
+};
+
 pub const Instruction = union(enum) {
     rtype: RType,
 
-    addi: Addi,
+    itype: IType,
 
     lui: Lui,
 };

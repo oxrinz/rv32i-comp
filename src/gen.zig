@@ -6,22 +6,44 @@ pub const Generator = struct {
     program: c_ast.Program,
     next_temp_reg: usize,
     instruction_buffer: std.ArrayList(asm_ast.Instruction),
+    rd: asm_ast.Reg,
+    rs1: asm_ast.Reg,
+    rs2: asm_ast.Reg,
+    immediate: i32,
 
     pub fn init(program: c_ast.Program, allocator: std.mem.Allocator) Generator {
         return .{
             .program = program,
             .next_temp_reg = 0,
             .instruction_buffer = std.ArrayList(asm_ast.Instruction).init(allocator),
+            .rd = asm_ast.Reg.t2,
+            .rs1 = asm_ast.Reg.t2,
+            .rs2 = asm_ast.Reg.t2,
+            .immediate = 0,
         };
     }
 
-    fn append_rtype(self: *Generator, instr: asm_ast.RType_Inst, source2: asm_ast.Reg) void {
-        self.instruction_buffer.append(.{ .rtype = .{
-            .instr = instr,
-            .destination = asm_ast.Reg.t2,
-            .source1 = asm_ast.Reg.t2,
-            .source2 = source2,
-        } }) catch @panic("Failed to append instruction");
+    fn appendInstr(self: *Generator, instr: asm_ast.InstructionType) void {
+        const instr_converted = asm_ast.convert(instr);
+        const instruction = switch (instr_converted) {
+            .rtype => asm_ast.Instruction{
+                .rtype = .{
+                    .instr = instr_converted.rtype,
+                    .destination = self.rd,
+                    .source1 = self.rs1,
+                    .source2 = self.rs2,
+                },
+            },
+            .itype => asm_ast.Instruction{
+                .itype = .{
+                    .instr = instr_converted.itype,
+                    .destination = self.rd,
+                    .source = self.rs1,
+                    .immediate = self.immediate,
+                },
+            },
+        };
+        self.instruction_buffer.append(instruction) catch @panic("Failed to append instruction");
     }
 
     fn getNextTempReg(self: *Generator) asm_ast.Reg {
@@ -54,10 +76,11 @@ pub const Generator = struct {
         });
 
         try self.instruction_buffer.append(.{
-            .addi = .{
+            .itype = .{
+                .instr = .ADDI,
                 .destination = dest_reg,
                 .source = dest_reg,
-                .imm = lower_bits,
+                .immediate = lower_bits,
             },
         });
     }
@@ -74,6 +97,55 @@ pub const Generator = struct {
         }
     }
 
+    fn appendOperator(self: *Generator, operator: c_ast.BinaryOperator) void {
+        switch (operator) {
+            .Add => {
+                self.appendInstr(.ADD);
+            },
+            .Subtract => {
+                self.appendInstr(.SUB);
+            },
+            .Multiply => {
+                self.appendInstr(.MUL);
+            },
+            .Divide => {
+                self.appendInstr(.DIV);
+            },
+            .Bitwise_AND => {
+                self.appendInstr(.AND);
+            },
+            .Bitwise_OR => {
+                self.appendInstr(.OR);
+            },
+            .Bitwise_XOR => {
+                self.appendInstr(.XOR);
+            },
+            .Left_Shift => {
+                self.appendInstr(.SLL);
+            },
+            .Right_Shift => {
+                self.appendInstr(.SRL);
+            },
+            .Less => {
+                self.appendInstr(.SLT);
+            },
+            .Less_Or_Equal => {
+                self.appendInstr(.SLT);
+                self.immediate = 1;
+                self.rs1 = asm_ast.Reg.t2;
+                self.appendInstr(.XORI);
+                self.rs1 = asm_ast.Reg.t0;
+            },
+            // Greater,
+            // Greater_Or_Equal,
+            // Equal,
+            // Not_Equal,
+            // And,
+            // Or,
+            else => @panic("Unsupported binary operator"),
+        }
+    }
+
     fn generateExpression(self: *Generator, exp: c_ast.Expression) error{OutOfMemory}!asm_ast.Reg {
         switch (exp) {
             .factor => |factor| {
@@ -86,36 +158,9 @@ pub const Generator = struct {
 
                     _ = try self.generateExpression(binary.left.*);
 
-                    switch (binary.operator) {
-                        .Add => {
-                            self.append_rtype(.ADD, temp_reg);
-                        },
-                        .Subtract => {
-                            self.append_rtype(.SUB, temp_reg);
-                        },
-                        .Multiply => {
-                            self.append_rtype(.MUL, temp_reg);
-                        },
-                        .Divide => {
-                            self.append_rtype(.DIV, temp_reg);
-                        },
-                        .Bitwise_AND => {
-                            self.append_rtype(.AND, temp_reg);
-                        },
-                        .Bitwise_OR => {
-                            self.append_rtype(.OR, temp_reg);
-                        },
-                        .Bitwise_XOR => {
-                            self.append_rtype(.XOR, temp_reg);
-                        },
-                        .Left_Shift => {
-                            self.append_rtype(.SLL, temp_reg);
-                        },
-                        .Right_Shift => {
-                            self.append_rtype(.SRL, temp_reg);
-                        },
-                        else => @panic("Unsupported binary operator"),
-                    }
+                    self.rs1 = temp_reg;
+
+                    self.appendOperator(binary.operator);
                     self.releaseTempReg();
                     return asm_ast.Reg.t2;
                 }
@@ -134,38 +179,9 @@ pub const Generator = struct {
 
                 _ = try self.generateExpression(binary.left.*);
 
-                std.debug.print("binop: {}", .{binary.operator});
+                self.rs1 = right_reg;
 
-                switch (binary.operator) {
-                    .Add => {
-                        self.append_rtype(.ADD, right_reg);
-                    },
-                    .Subtract => {
-                        self.append_rtype(.SUB, right_reg);
-                    },
-                    .Multiply => {
-                        self.append_rtype(.MUL, right_reg);
-                    },
-                    .Divide => {
-                        self.append_rtype(.DIV, right_reg);
-                    },
-                    .Bitwise_AND => {
-                        self.append_rtype(.AND, right_reg);
-                    },
-                    .Bitwise_OR => {
-                        self.append_rtype(.OR, right_reg);
-                    },
-                    .Bitwise_XOR => {
-                        self.append_rtype(.XOR, right_reg);
-                    },
-                    .Left_Shift => {
-                        self.append_rtype(.SLL, right_reg);
-                    },
-                    .Right_Shift => {
-                        self.append_rtype(.SRL, right_reg);
-                    },
-                    else => @panic("Unsupported binary operator"),
-                }
+                self.appendOperator(binary.operator);
 
                 self.releaseTempReg();
                 return asm_ast.Reg.t2;

@@ -1,4 +1,5 @@
 const std = @import("std");
+const testing = std.testing;
 const Lexer = @import("lexer.zig").Lexer;
 const Parser = @import("parser.zig").Parser;
 const Generator = @import("gen.zig").Generator;
@@ -6,10 +7,7 @@ const Emitter = @import("emission.zig").Emitter;
 const prettyprinter = @import("prettyprinter.zig");
 
 pub fn main() !void {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    defer _ = gpa.deinit();
-
-    var arena = std.heap.ArenaAllocator.init(gpa.allocator());
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
     const allocator = arena.allocator();
 
@@ -72,5 +70,69 @@ pub fn main() !void {
     const program = try generator.generate();
 
     var emitter = Emitter.init(program);
-    try emitter.write(file_path);
+    try emitter.write(file_path, allocator);
+}
+
+fn generate(input: []const u8, allocator: std.mem.Allocator) ![]const u8 {
+    var lexer = Lexer.init(allocator, input);
+    lexer.scan();
+
+    var parser = Parser.init(lexer.tokens.items, allocator);
+    const program_definition = parser.parse();
+
+    var generator = Generator.init(program_definition, allocator);
+    const program = try generator.generate();
+
+    var emitter = Emitter.init(program);
+
+    return try emitter.getAssemblyString(allocator);
+}
+
+test "basic addition" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+
+    const input =
+        \\int main()
+        \\{
+        \\ return 2 + 6;
+        \\}
+    ;
+
+    const actual = try generate(input, arena.allocator());
+    const expected =
+        \\lui t0 0
+        \\addi t0 t0 6
+        \\lui t2 0
+        \\addi t2 t2 2
+        \\add t2 t0 t2
+        \\
+    ;
+
+    try std.testing.expectEqualStrings(expected, actual);
+}
+
+test "less or equal" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+
+    const input =
+        \\int main()
+        \\{
+        \\ return 2 <= 6;
+        \\}
+    ;
+
+    const actual = try generate(input, arena.allocator());
+    const expected =
+        \\lui t0 0
+        \\addi t0 t0 6
+        \\lui t2 0
+        \\addi t2 t2 2
+        \\slt t2 t0 t2
+        \\xori t2 t0 1
+        \\
+    ;
+
+    try std.testing.expectEqualStrings(expected, actual);
 }

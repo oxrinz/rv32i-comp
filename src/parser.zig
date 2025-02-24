@@ -55,7 +55,6 @@ pub const Parser = struct {
         // ??????????????
         // ??????????????
         const expr_ptr = self.parse_expression(0) catch @panic("failed");
-        std.debug.print("parsing exp: {}\n", .{expr_ptr});
         const expr = expr_ptr.*;
         self.allocator.destroy(expr_ptr);
         return .{

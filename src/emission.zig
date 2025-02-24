@@ -10,7 +10,43 @@ pub const Emitter = struct {
 
     fn reg_to_string() []const u8 {}
 
-    pub fn write(self: *Emitter, out_name: []const u8) !void {
+    pub fn getAssemblyString(self: *Emitter, allocator: std.mem.Allocator) ![]const u8 {
+        var buffer = std.ArrayList(u8).init(allocator);
+        errdefer buffer.deinit();
+        const writer = buffer.writer();
+
+        for (self.program.function.instructions) |instruction| {
+            switch (instruction) {
+                .rtype => |r| {
+                    try std.fmt.format(writer, "{s} {s} {s} {s}\n", .{
+                        r.instr.toString(),
+                        r.destination.toString(),
+                        r.source1.toString(),
+                        r.source2.toString(),
+                    });
+                },
+                .itype => |i| {
+                    try std.fmt.format(writer, "{s} {s} {s} {}\n", .{
+                        i.instr.toString(),
+                        i.destination.toString(),
+                        i.source.toString(),
+                        i.immediate,
+                    });
+                },
+                .lui => |lui| {
+                    const imm = @as(i32, @intCast(lui.imm));
+                    try std.fmt.format(writer, "lui {s} {}\n", .{
+                        lui.destination.toString(),
+                        imm,
+                    });
+                },
+            }
+        }
+
+        return buffer.toOwnedSlice(); // Caller owns the memory
+    }
+
+    pub fn write(self: *Emitter, out_name: []const u8, allocator: std.mem.Allocator) !void {
         const dirname = std.fs.path.dirname(out_name) orelse ".";
         const stem = std.fs.path.stem(out_name);
 
@@ -20,38 +56,15 @@ pub const Emitter = struct {
             stem,
         });
 
+        const assembly = try self.getAssemblyString(allocator);
+        defer allocator.free(assembly);
+
         const file = try std.fs.cwd().createFile(
             output_path,
             .{},
         );
         defer file.close();
 
-        for (self.program.function.instructions) |instruction| {
-            switch (instruction) {
-                .rtype => |r| {
-                    try std.fmt.format(file.writer(), "{s} {s} {s} {s}\n", .{
-                        r.instr.to_string(),
-                        r.destination.to_string(),
-                        r.source1.to_string(),
-                        r.source2.to_string(),
-                    });
-                },
-                .addi => |addi| {
-                    const imm = @as(i32, @intCast(addi.imm));
-                    try std.fmt.format(file.writer(), "addi {s} {s} {}\n", .{
-                        addi.destination.to_string(),
-                        addi.source.to_string(),
-                        imm,
-                    });
-                },
-                .lui => |lui| {
-                    const imm = @as(i32, @intCast(lui.imm));
-                    try std.fmt.format(file.writer(), "lui {s} {}\n", .{
-                        lui.destination.to_string(),
-                        imm,
-                    });
-                },
-            }
-        }
+        try file.writeAll(assembly);
     }
 };
