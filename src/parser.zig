@@ -140,7 +140,7 @@ pub const Parser = struct {
             .LESS_EQUAL => return .Less_Or_Equal,
             .GREATER => return .Greater,
             .GREATER_EQUAL => return .Greater_Or_Equal,
-            .EQUAL => return .Equal,
+            .EQUAL_EQUAL => return .Equal,
             .BANG_EQUAL => return .Not_Equal,
             .AMPERSAND_AMPERSAND => return .And,
             .PIPE_PIPE => return .Or,
@@ -153,7 +153,7 @@ pub const Parser = struct {
         switch (token.type) {
             .PIPE_PIPE => return 5,
             .AMPERSAND_AMPERSAND => return 10,
-            .EQUAL, .BANG_EQUAL => return 30,
+            .EQUAL_EQUAL, .BANG_EQUAL => return 30,
             .LESS, .LESS_EQUAL, .GREATER, .GREATER_EQUAL => return 35,
             .LEFT_SHIFT, .RIGHT_SHIFT => return 48,
             .AMPERSAND => return 47,

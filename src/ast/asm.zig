@@ -51,8 +51,8 @@ pub const InstructionType = enum {
     // SLL,
     // SRL,
     // SRA,
-    // SLT,
-    // SLTU,
+    SLTI,
+    SLTIU,
     // MUL,
     // MULH,
     // MULSU,
@@ -63,17 +63,6 @@ pub const InstructionType = enum {
     // REMU,
 
 };
-
-pub fn convert(instr: InstructionType) union(enum) { rtype: RType_Inst, itype: IType_Inst } {
-    return switch (instr) {
-        .ADD, .SUB, .XOR, .OR, .AND, .SLL, .SRL, .SRA, .SLT, .SLTU, .MUL, .MULH, .MULSU, .MULU, .DIV, .DIVU, .REM, .REMU => .{
-            .rtype = @as(RType_Inst, @enumFromInt(@intFromEnum(instr))),
-        },
-        .ADDI, .XORI => .{
-            .itype = @as(IType_Inst, @enumFromInt(@intFromEnum(instr))),
-        },
-    };
-}
 
 pub const RType_Inst = enum {
     ADD,
@@ -115,8 +104,8 @@ pub const IType_Inst = enum {
     // SLL,
     // SRL,
     // SRA,
-    // SLT,
-    // SLTU,
+    SLTI,
+    SLTIU,
     // MUL,
     // MULH,
     // MULSU,
@@ -136,6 +125,24 @@ pub const IType_Inst = enum {
         return std.ascii.lowerString(&buf, str);
     }
 };
+
+pub fn convert(instr: InstructionType) union(enum) { rtype: RType_Inst, itype: IType_Inst } {
+    const instr_name = @tagName(instr);
+
+    inline for (@typeInfo(RType_Inst).Enum.fields) |field| {
+        if (std.mem.eql(u8, instr_name, field.name)) {
+            return .{ .rtype = @field(RType_Inst, field.name) };
+        }
+    }
+
+    inline for (@typeInfo(IType_Inst).Enum.fields) |field| {
+        if (std.mem.eql(u8, instr_name, field.name)) {
+            return .{ .itype = @field(IType_Inst, field.name) };
+        }
+    }
+
+    unreachable;
+}
 
 // pub const InstructionType = union(enum) {
 //     rtype: RType_Inst,

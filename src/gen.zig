@@ -127,7 +127,11 @@ pub const Generator = struct {
                 self.appendInstr(.SRL);
             },
             .Less => {
+                self.rs1 = asm_ast.Reg.t2;
+                self.rs2 = asm_ast.Reg.t0;
                 self.appendInstr(.SLT);
+                self.rs1 = asm_ast.Reg.t0;
+                self.rs2 = asm_ast.Reg.t2;
             },
             .Less_Or_Equal => {
                 self.appendInstr(.SLT);
@@ -136,12 +140,40 @@ pub const Generator = struct {
                 self.appendInstr(.XORI);
                 self.rs1 = asm_ast.Reg.t0;
             },
-            // Greater,
-            // Greater_Or_Equal,
-            // Equal,
-            // Not_Equal,
-            // And,
-            // Or,
+            .Greater => {
+                self.appendInstr(.SLT);
+            },
+            .Greater_Or_Equal => {
+                self.rs1 = asm_ast.Reg.t2;
+                self.rs2 = asm_ast.Reg.t0;
+                self.appendInstr(.SLT);
+                self.rs1 = asm_ast.Reg.t0;
+                self.rs2 = asm_ast.Reg.t2;
+                self.immediate = 1;
+                self.rs1 = asm_ast.Reg.t2;
+                self.appendInstr(.XORI);
+                self.rs1 = asm_ast.Reg.t0;
+            },
+            .Equal => {
+                self.appendInstr(.SUB);
+                self.immediate = 1;
+                self.rs1 = asm_ast.Reg.t2;
+                self.appendInstr(.SLTIU);
+                self.rs1 = asm_ast.Reg.t0;
+            },
+            .Not_Equal => {
+                self.appendInstr(.SUB);
+                self.immediate = 1;
+                self.rs1 = asm_ast.Reg.t2;
+                self.appendInstr(.SLTIU);
+                self.rs1 = asm_ast.Reg.t0;
+                self.immediate = 1;
+                self.rs1 = asm_ast.Reg.t2;
+                self.appendInstr(.XORI);
+                self.rs1 = asm_ast.Reg.t0;
+            },
+            // .And => {},
+            // .Or => {},
             else => @panic("Unsupported binary operator"),
         }
     }

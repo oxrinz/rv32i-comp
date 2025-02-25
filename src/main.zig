@@ -130,7 +130,131 @@ test "less or equal" {
         \\lui t2 0
         \\addi t2 t2 2
         \\slt t2 t0 t2
-        \\xori t2 t0 1
+        \\xori t2 t2 1
+        \\
+    ;
+
+    try std.testing.expectEqualStrings(expected, actual);
+}
+
+test "less" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+
+    const input =
+        \\int main()
+        \\{
+        \\ return 2 < 6;
+        \\}
+    ;
+
+    const actual = try generate(input, arena.allocator());
+    const expected =
+        \\lui t0 0
+        \\addi t0 t0 6
+        \\lui t2 0
+        \\addi t2 t2 2
+        \\slt t2 t2 t0
+        \\
+    ;
+
+    try std.testing.expectEqualStrings(expected, actual);
+}
+
+test "greater or equal" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+
+    const input =
+        \\int main()
+        \\{
+        \\ return 2 >= 6;
+        \\}
+    ;
+
+    const actual = try generate(input, arena.allocator());
+    const expected =
+        \\lui t0 0
+        \\addi t0 t0 6
+        \\lui t2 0
+        \\addi t2 t2 2
+        \\slt t2 t2 t0
+        \\xori t2 t2 1
+        \\
+    ;
+
+    try std.testing.expectEqualStrings(expected, actual);
+}
+
+test "greater" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+
+    const input =
+        \\int main()
+        \\{
+        \\ return 2 > 6;
+        \\}
+    ;
+
+    const actual = try generate(input, arena.allocator());
+    const expected =
+        \\lui t0 0
+        \\addi t0 t0 6
+        \\lui t2 0
+        \\addi t2 t2 2
+        \\slt t2 t0 t2
+        \\
+    ;
+
+    try std.testing.expectEqualStrings(expected, actual);
+}
+
+test "equal" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+
+    const input =
+        \\int main()
+        \\{
+        \\ return 2 == 6;
+        \\}
+    ;
+
+    const actual = try generate(input, arena.allocator());
+    const expected =
+        \\lui t0 0
+        \\addi t0 t0 6
+        \\lui t2 0
+        \\addi t2 t2 2
+        \\sub t2 t0 t2
+        \\sltiu t2 t2 1
+        \\
+    ;
+
+    try std.testing.expectEqualStrings(expected, actual);
+}
+
+test "not equal" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+
+    const input =
+        \\int main()
+        \\{
+        \\ return 2 != 6;
+        \\}
+    ;
+
+    const actual = try generate(input, arena.allocator());
+    const expected =
+        \\lui t0 0
+        \\addi t0 t0 6
+        \\lui t2 0
+        \\addi t2 t2 2
+        \\sub t2 t0 t2
+        \\sltiu t2 t2 1
+        \\xori t2 t2 1
         \\
     ;
 
