@@ -102,10 +102,10 @@ test "basic addition" {
     const actual = try generate(input, arena.allocator());
     const expected =
         \\lui t0 0
-        \\addi t0 t0 6
-        \\lui t2 0
-        \\addi t2 t2 2
-        \\add t2 t0 t2
+        \\addi t0 t0 2
+        \\lui t1 0
+        \\addi t1 t1 6
+        \\add t1 t0 t1
         \\
     ;
 
@@ -126,11 +126,11 @@ test "less or equal" {
     const actual = try generate(input, arena.allocator());
     const expected =
         \\lui t0 0
-        \\addi t0 t0 6
-        \\lui t2 0
-        \\addi t2 t2 2
-        \\slt t2 t0 t2
-        \\xori t2 t2 1
+        \\addi t0 t0 2
+        \\lui t1 0
+        \\addi t1 t1 6
+        \\slt t1 t1 t0
+        \\xori t1 t1 1
         \\
     ;
 
@@ -151,10 +151,10 @@ test "less" {
     const actual = try generate(input, arena.allocator());
     const expected =
         \\lui t0 0
-        \\addi t0 t0 6
-        \\lui t2 0
-        \\addi t2 t2 2
-        \\slt t2 t2 t0
+        \\addi t0 t0 2
+        \\lui t1 0
+        \\addi t1 t1 6
+        \\slt t1 t0 t1
         \\
     ;
 
@@ -175,11 +175,11 @@ test "greater or equal" {
     const actual = try generate(input, arena.allocator());
     const expected =
         \\lui t0 0
-        \\addi t0 t0 6
-        \\lui t2 0
-        \\addi t2 t2 2
-        \\slt t2 t2 t0
-        \\xori t2 t2 1
+        \\addi t0 t0 2
+        \\lui t1 0
+        \\addi t1 t1 6
+        \\slt t1 t0 t1
+        \\xori t1 t1 1
         \\
     ;
 
@@ -200,10 +200,10 @@ test "greater" {
     const actual = try generate(input, arena.allocator());
     const expected =
         \\lui t0 0
-        \\addi t0 t0 6
-        \\lui t2 0
-        \\addi t2 t2 2
-        \\slt t2 t0 t2
+        \\addi t0 t0 2
+        \\lui t1 0
+        \\addi t1 t1 6
+        \\slt t1 t1 t0
         \\
     ;
 
@@ -224,11 +224,11 @@ test "equal" {
     const actual = try generate(input, arena.allocator());
     const expected =
         \\lui t0 0
-        \\addi t0 t0 6
-        \\lui t2 0
-        \\addi t2 t2 2
-        \\sub t2 t0 t2
-        \\sltiu t2 t2 1
+        \\addi t0 t0 2
+        \\lui t1 0
+        \\addi t1 t1 6
+        \\sub t1 t0 t1
+        \\sltiu t1 t1 1
         \\
     ;
 
@@ -249,14 +249,58 @@ test "not equal" {
     const actual = try generate(input, arena.allocator());
     const expected =
         \\lui t0 0
-        \\addi t0 t0 6
-        \\lui t2 0
-        \\addi t2 t2 2
-        \\sub t2 t0 t2
-        \\sltiu t2 t2 1
-        \\xori t2 t2 1
+        \\addi t0 t0 2
+        \\lui t1 0
+        \\addi t1 t1 6
+        \\sub t1 t0 t1
+        \\sltiu t1 t1 1
+        \\xori t1 t1 1
         \\
     ;
+
+    try std.testing.expectEqualStrings(expected, actual);
+}
+
+test "or short circuit 1" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+
+    const input =
+        \\int main()
+        \\{
+        \\    return 5 < 3 || 2 == 2 || 2 == 3;
+        \\}
+    ;
+
+    const actual = try generate(input, arena.allocator());
+
+    const expected = try std.fs.cwd().readFileAlloc(
+        arena.allocator(),
+        "../shared_tests/or_short_circuit_1.asm",
+        1024 * 1024,
+    );
+
+    try std.testing.expectEqualStrings(expected, actual);
+}
+
+test "or short circuit 2" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+
+    const input =
+        \\int main()
+        \\{
+        \\    return 3 > 3 || 19 != 19 || 4 <= 3 || 2 >= 2 || 2 != 2;
+        \\}
+    ;
+
+    const actual = try generate(input, arena.allocator());
+
+    const expected = try std.fs.cwd().readFileAlloc(
+        arena.allocator(),
+        "../shared_tests/or_short_circuit_2.asm",
+        1024 * 1024,
+    );
 
     try std.testing.expectEqualStrings(expected, actual);
 }

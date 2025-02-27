@@ -27,6 +27,7 @@ pub const Parser = struct {
         return .{ .function = self.parse_function() };
     }
 
+    // TODO: can't start function with a left paren
     fn parse_function(self: *Parser) c_ast.FunctionDefinition {
         self.expect(.INT);
         self.cursor += 1;

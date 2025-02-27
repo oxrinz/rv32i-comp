@@ -5,6 +5,7 @@ pub const Reg = enum {
     t0,
     t1,
     t2,
+    t3,
     a0,
 
     pub fn toString(self: Reg) []const u8 {
@@ -62,7 +63,37 @@ pub const InstructionType = enum {
     // REM,
     // REMU,
 
+    BEQ,
+    BNE,
+    BLT,
+    BGE,
+    BLTU,
+    BGEU,
 };
+
+pub fn convert(instr: InstructionType) union(enum) { rtype: RType_Inst, itype: IType_Inst, btype: BType_Inst } {
+    const instr_name = @tagName(instr);
+
+    inline for (@typeInfo(RType_Inst).Enum.fields) |field| {
+        if (std.mem.eql(u8, instr_name, field.name)) {
+            return .{ .rtype = @field(RType_Inst, field.name) };
+        }
+    }
+
+    inline for (@typeInfo(IType_Inst).Enum.fields) |field| {
+        if (std.mem.eql(u8, instr_name, field.name)) {
+            return .{ .itype = @field(IType_Inst, field.name) };
+        }
+    }
+
+    inline for (@typeInfo(BType_Inst).Enum.fields) |field| {
+        if (std.mem.eql(u8, instr_name, field.name)) {
+            return .{ .btype = @field(BType_Inst, field.name) };
+        }
+    }
+
+    unreachable;
+}
 
 pub const RType_Inst = enum {
     ADD,
@@ -126,28 +157,24 @@ pub const IType_Inst = enum {
     }
 };
 
-pub fn convert(instr: InstructionType) union(enum) { rtype: RType_Inst, itype: IType_Inst } {
-    const instr_name = @tagName(instr);
+pub const BType_Inst = enum {
+    BEQ,
+    BNE,
+    BLT,
+    BGE,
+    BLTU,
+    BGEU,
 
-    inline for (@typeInfo(RType_Inst).Enum.fields) |field| {
-        if (std.mem.eql(u8, instr_name, field.name)) {
-            return .{ .rtype = @field(RType_Inst, field.name) };
+    pub fn toString(self: BType_Inst) []const u8 {
+        const str = @tagName(self);
+        comptime var max_len = 0;
+        inline for (@typeInfo(RType_Inst).Enum.fields) |field| {
+            max_len = @max(max_len, field.name.len);
         }
+        var buf: [max_len]u8 = undefined;
+        return std.ascii.lowerString(&buf, str);
     }
-
-    inline for (@typeInfo(IType_Inst).Enum.fields) |field| {
-        if (std.mem.eql(u8, instr_name, field.name)) {
-            return .{ .itype = @field(IType_Inst, field.name) };
-        }
-    }
-
-    unreachable;
-}
-
-// pub const InstructionType = union(enum) {
-//     rtype: RType_Inst,
-//     itype: IType_Inst,
-// };
+};
 
 const RType = struct {
     instr: RType_Inst,
@@ -163,12 +190,28 @@ const IType = struct {
     immediate: i32,
 };
 
+const BType = struct {
+    instr: BType_Inst,
+    source1: Reg,
+    source2: Reg,
+    label: []const u8,
+};
+
+const Label = struct {
+    name: []const u8,
+};
+
 pub const Instruction = union(enum) {
     rtype: RType,
-
     itype: IType,
+    // stype: SType,
+    btype: BType,
+    // utype: UType,
+    // jtype: JType,
 
     lui: Lui,
+
+    label: Label,
 };
 
 pub const FunctionDefinition = struct {

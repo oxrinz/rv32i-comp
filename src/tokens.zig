@@ -3,7 +3,7 @@ const Allocator = std.mem.Allocator;
 
 pub fn is_binary_operator(token: TokenType) bool {
     switch (token) {
-        .PLUS, .MINUS, .STAR, .SLASH, .PERCENTAGE, .AMPERSAND, .PIPE, .CARET, .LEFT_SHIFT, .RIGHT_SHIFT, .AMPERSAND_AMPERSAND, .BANG, .BANG_EQUAL, .EQUAL, .EQUAL_EQUAL, .GREATER, .GREATER_EQUAL, .LESS, .LESS_EQUAL => return true,
+        .PLUS, .MINUS, .STAR, .SLASH, .PERCENTAGE, .AMPERSAND, .PIPE, .CARET, .LEFT_SHIFT, .RIGHT_SHIFT, .AMPERSAND_AMPERSAND, .PIPE_PIPE, .BANG, .BANG_EQUAL, .EQUAL, .EQUAL_EQUAL, .GREATER, .GREATER_EQUAL, .LESS, .LESS_EQUAL => return true,
         else => return false,
     }
 }

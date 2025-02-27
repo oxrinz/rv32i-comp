@@ -10,16 +10,18 @@ pub const Generator = struct {
     rs1: asm_ast.Reg,
     rs2: asm_ast.Reg,
     immediate: i32,
+    label: []const u8,
 
     pub fn init(program: c_ast.Program, allocator: std.mem.Allocator) Generator {
         return .{
             .program = program,
             .next_temp_reg = 0,
             .instruction_buffer = std.ArrayList(asm_ast.Instruction).init(allocator),
-            .rd = asm_ast.Reg.t2,
-            .rs1 = asm_ast.Reg.t2,
-            .rs2 = asm_ast.Reg.t2,
+            .rd = asm_ast.Reg.t1,
+            .rs1 = asm_ast.Reg.t1,
+            .rs2 = asm_ast.Reg.t1,
             .immediate = 0,
+            .label = "",
         };
     }
 
@@ -42,35 +44,24 @@ pub const Generator = struct {
                     .immediate = self.immediate,
                 },
             },
+            .btype => asm_ast.Instruction{ .btype = .{
+                .instr = instr_converted.btype,
+                .source1 = self.rs1,
+                .source2 = self.rs2,
+                .label = self.label,
+            } },
         };
         self.instruction_buffer.append(instruction) catch @panic("Failed to append instruction");
     }
 
-    fn getNextTempReg(self: *Generator) asm_ast.Reg {
-        const reg = switch (self.next_temp_reg) {
-            0 => asm_ast.Reg.t0,
-            1 => asm_ast.Reg.t1,
-            2 => asm_ast.Reg.t2,
-            else => @panic("Out of temporary registers"),
-        };
-        self.next_temp_reg += 1;
-        return reg;
-    }
-
-    fn releaseTempReg(self: *Generator) void {
-        if (self.next_temp_reg > 0) {
-            self.next_temp_reg -= 1;
-        }
-    }
-
-    fn loadImmediate(self: *Generator, value: i32, dest_reg: asm_ast.Reg) !void {
+    fn loadImmediate(self: *Generator, value: i32) !void {
         const unsigned_val: u32 = @bitCast(value);
         const upper_bits: u20 = @truncate(unsigned_val >> 12);
         const lower_bits: u12 = @truncate(unsigned_val);
 
         try self.instruction_buffer.append(.{
             .lui = .{
-                .destination = dest_reg,
+                .destination = self.rd,
                 .imm = upper_bits,
             },
         });
@@ -78,21 +69,20 @@ pub const Generator = struct {
         try self.instruction_buffer.append(.{
             .itype = .{
                 .instr = .ADDI,
-                .destination = dest_reg,
-                .source = dest_reg,
+                .destination = self.rd,
+                .source = self.rd,
                 .immediate = lower_bits,
             },
         });
     }
 
-    fn generateFactor(self: *Generator, factor: c_ast.Factor) error{OutOfMemory}!asm_ast.Reg {
+    fn generateFactor(self: *Generator, factor: c_ast.Factor) error{OutOfMemory}!void {
         switch (factor) {
             .constant => |constant| {
-                try self.loadImmediate(constant, asm_ast.Reg.t2);
-                return asm_ast.Reg.t2;
+                try self.loadImmediate(constant);
             },
             .expression => |expr| {
-                return try self.generateExpression(expr.*);
+                try self.generateExpression(expr.*);
             },
         }
     }
@@ -127,104 +117,241 @@ pub const Generator = struct {
                 self.appendInstr(.SRL);
             },
             .Less => {
-                self.rs1 = asm_ast.Reg.t2;
-                self.rs2 = asm_ast.Reg.t0;
-                self.appendInstr(.SLT);
                 self.rs1 = asm_ast.Reg.t0;
-                self.rs2 = asm_ast.Reg.t2;
+                self.rs2 = asm_ast.Reg.t1;
+                self.appendInstr(.SLT);
             },
             .Less_Or_Equal => {
+                self.rs1 = asm_ast.Reg.t1;
+                self.rs2 = asm_ast.Reg.t0;
                 self.appendInstr(.SLT);
                 self.immediate = 1;
-                self.rs1 = asm_ast.Reg.t2;
+                self.rs1 = asm_ast.Reg.t1;
                 self.appendInstr(.XORI);
                 self.rs1 = asm_ast.Reg.t0;
             },
             .Greater => {
+                self.rs1 = asm_ast.Reg.t1;
+                self.rs2 = asm_ast.Reg.t0;
                 self.appendInstr(.SLT);
             },
             .Greater_Or_Equal => {
-                self.rs1 = asm_ast.Reg.t2;
-                self.rs2 = asm_ast.Reg.t0;
                 self.appendInstr(.SLT);
                 self.rs1 = asm_ast.Reg.t0;
-                self.rs2 = asm_ast.Reg.t2;
+                self.rs2 = asm_ast.Reg.t1;
                 self.immediate = 1;
-                self.rs1 = asm_ast.Reg.t2;
+                self.rs1 = asm_ast.Reg.t1;
                 self.appendInstr(.XORI);
                 self.rs1 = asm_ast.Reg.t0;
             },
             .Equal => {
                 self.appendInstr(.SUB);
                 self.immediate = 1;
-                self.rs1 = asm_ast.Reg.t2;
+                self.rs1 = asm_ast.Reg.t1;
                 self.appendInstr(.SLTIU);
                 self.rs1 = asm_ast.Reg.t0;
             },
             .Not_Equal => {
                 self.appendInstr(.SUB);
                 self.immediate = 1;
-                self.rs1 = asm_ast.Reg.t2;
+                self.rs1 = asm_ast.Reg.t1;
                 self.appendInstr(.SLTIU);
                 self.rs1 = asm_ast.Reg.t0;
                 self.immediate = 1;
-                self.rs1 = asm_ast.Reg.t2;
+                self.rs1 = asm_ast.Reg.t1;
                 self.appendInstr(.XORI);
                 self.rs1 = asm_ast.Reg.t0;
             },
-            // .And => {},
-            // .Or => {},
+            .And, .Or => @panic("And and Or operators ran in appendOperator even though they have a separate function for generation. This shouldn't happen."),
             else => @panic("Unsupported binary operator"),
         }
     }
 
-    fn generateExpression(self: *Generator, exp: c_ast.Expression) error{OutOfMemory}!asm_ast.Reg {
-        switch (exp) {
-            .factor => |factor| {
-                return try self.generateFactor(factor);
+    // TODO: rename to generate and check for all comparison ops
+    // figure out a way to do this without t3
+    fn generateShortCircuitingExpression(self: *Generator, binary: c_ast.Binary, is_and: bool) error{OutOfMemory}!void {
+        self.label = "end";
+        switch (binary.operator) {
+            .Equal => {
+                self.rd = .t1;
+                try self.generateExpression(binary.right.*);
+
+                self.rd = .t0;
+                try self.generateExpression(binary.left.*);
+
+                if (is_and) self.appendInstr(.BNE) else self.appendInstr(.BEQ);
             },
-            .binary => |binary| {
-                if (binary.right.* == .factor and binary.right.*.factor == .constant) {
-                    const temp_reg = self.getNextTempReg();
-                    try self.loadImmediate(binary.right.*.factor.constant, temp_reg);
+            .Not_Equal => {
+                self.rd = .t1;
+                try self.generateExpression(binary.right.*);
 
-                    _ = try self.generateExpression(binary.left.*);
+                self.rd = .t0;
+                try self.generateExpression(binary.left.*);
 
-                    self.rs1 = temp_reg;
+                if (is_and) self.appendInstr(.BEQ) else self.appendInstr(.BNE);
+            },
+            .Less => {
+                self.rd = .t1;
+                try self.generateExpression(binary.right.*);
 
-                    self.appendOperator(binary.operator);
-                    self.releaseTempReg();
-                    return asm_ast.Reg.t2;
+                self.rd = .t0;
+                try self.generateExpression(binary.left.*);
+
+                if (is_and) {
+                    self.rs1 = .t1;
+                    self.rs2 = .t0;
+                } else {
+                    self.rs1 = .t0;
+                    self.rs2 = .t1;
                 }
 
-                _ = try self.generateExpression(binary.right.*);
+                self.appendInstr(.BLT);
+            },
+            .Less_Or_Equal => {
+                self.rd = .t1;
+                try self.generateExpression(binary.right.*);
 
-                const right_reg = self.getNextTempReg();
-                try self.instruction_buffer.append(.{
-                    .rtype = .{
-                        .instr = .ADD,
-                        .destination = right_reg,
-                        .source1 = asm_ast.Reg.t2,
-                        .source2 = asm_ast.Reg.zero,
-                    },
-                });
+                self.rd = .t0;
+                try self.generateExpression(binary.left.*);
 
-                _ = try self.generateExpression(binary.left.*);
+                if (is_and) {
+                    self.rs1 = .t0;
+                    self.rs2 = .t1;
+                } else {
+                    self.rs1 = .t1;
+                    self.rs2 = .t0;
+                }
 
-                self.rs1 = right_reg;
+                self.appendInstr(.BGE);
+            },
+            .Greater => {
+                self.rd = .t1;
+                try self.generateExpression(binary.right.*);
 
-                self.appendOperator(binary.operator);
+                self.rd = .t0;
+                try self.generateExpression(binary.left.*);
 
-                self.releaseTempReg();
-                return asm_ast.Reg.t2;
+                if (is_and) {
+                    self.rs1 = .t0;
+                    self.rs2 = .t1;
+                } else {
+                    self.rs1 = .t1;
+                    self.rs2 = .t0;
+                }
+
+                self.appendInstr(.BLT);
+            },
+            .Greater_Or_Equal => {
+                self.rd = .t1;
+                try self.generateExpression(binary.right.*);
+
+                self.rd = .t0;
+                try self.generateExpression(binary.left.*);
+
+                if (is_and) {
+                    self.rs1 = .t1;
+                    self.rs2 = .t0;
+                } else {
+                    self.rs1 = .t0;
+                    self.rs2 = .t1;
+                }
+
+                self.appendInstr(.BGE);
+            },
+            .And => {
+                self.rd = .t1;
+                try self.generateExpression(binary.right.*);
+
+                self.rd = .t0;
+                try self.generateExpression(binary.left.*);
+
+                self.appendInstr(.BNE);
+            },
+            .Or => {
+                self.rd = .t1;
+                try self.generateExpression(binary.right.*);
+
+                self.rd = .t0;
+                try self.generateExpression(binary.left.*);
+
+                self.appendInstr(.BEQ);
+            },
+            else => @panic("Short circuiting expression not supported"),
+        }
+    }
+
+    fn generateExpression(self: *Generator, exp: c_ast.Expression) error{OutOfMemory}!void {
+        switch (exp) {
+            .factor => |factor| {
+                try self.generateFactor(factor);
+            },
+            .binary => |binary| {
+                // TODO: useful for debugging, remove or incorporate in DEBUG mode properly
+                // std.debug.print("left: {}\n right: {}\n", .{ exp.binary.left, exp.binary.right });
+
+                const optype = binary.operator.getType();
+
+                if (optype == .SHORT_CIRCUIT) {
+                    if (binary.left.binary.operator.getType() == .SHORT_CIRCUIT or
+                        (binary.left.* == .binary and binary.right.* == .binary and
+                        binary.left.binary.operator.getType() == .COMPARISON and
+                        binary.right.binary.operator.getType() == .COMPARISON))
+                    {
+                        if (binary.left.binary.operator.getType() == .SHORT_CIRCUIT) {
+                            try self.generateExpression(binary.left.*);
+                            try self.generateShortCircuitingExpression(binary.right.binary, binary.operator == .And);
+                        } else {
+                            self.rd = .t0;
+                            try self.generateShortCircuitingExpression(binary.left.binary, binary.operator == .And);
+                            self.rd = .t1;
+                            try self.generateShortCircuitingExpression(binary.right.binary, binary.operator == .And);
+                        }
+                    } else {
+                        @panic("Can't short-circuit non comparison operators");
+                    }
+                } else {
+                    // check if right side expression is a constant. if it is, evaluate left side first (non constant)
+                    // all expressions return t1. t0 is used for internal calculations. in other words, all right side expressions return t1, and left side return t0
+                    const right_is_const = binary.right.* == .factor and binary.right.*.factor == .constant;
+                    if (right_is_const) {
+                        self.rd = .t0;
+                        try self.generateExpression(binary.left.*);
+                    }
+
+                    self.rd = .t1;
+                    try self.generateExpression(binary.right.*);
+
+                    if (!right_is_const) {
+                        self.rd = .t0;
+                        try self.generateExpression(binary.left.*);
+                    }
+
+                    self.rd = .t1;
+                    self.rs1 = .t0;
+                    self.rs2 = .t1;
+                    self.appendOperator(binary.operator);
+                }
             },
         }
     }
 
     pub fn generate(self: *Generator) !asm_ast.Program {
         if (self.program.function.statement.type == .RETURN) {
-            const result_reg = try self.generateExpression(self.program.function.statement.exp);
-            std.debug.assert(result_reg == .t2);
+            try self.generateExpression(self.program.function.statement.exp);
+
+            // add label to end if branches exist
+            var has_btype = false;
+            for (self.instruction_buffer.items) |instr| {
+                if (instr == .btype) {
+                    has_btype = true;
+                    break;
+                }
+            }
+
+            if (has_btype) {
+                try self.instruction_buffer.append(.{ .label = .{ .name = "end" } });
+            }
+            // --
 
             return .{
                 .function = .{
