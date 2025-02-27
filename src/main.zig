@@ -304,3 +304,25 @@ test "or short circuit 2" {
 
     try std.testing.expectEqualStrings(expected, actual);
 }
+
+test "and short circuit 1" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+
+    const input =
+        \\int main()
+        \\{
+        \\    return 2 == 2 && 2 <= 1 && 5 > 3;
+        \\}
+    ;
+
+    const actual = try generate(input, arena.allocator());
+
+    const expected = try std.fs.cwd().readFileAlloc(
+        arena.allocator(),
+        "../shared_tests/and_short_circuit_1.asm",
+        1024 * 1024,
+    );
+
+    try std.testing.expectEqualStrings(expected, actual);
+}

@@ -179,6 +179,8 @@ pub const Generator = struct {
                 self.rd = .t0;
                 try self.generateExpression(binary.left.*);
 
+                self.rs1 = .t0;
+                self.rs2 = .t1;
                 if (is_and) self.appendInstr(.BNE) else self.appendInstr(.BEQ);
             },
             .Not_Equal => {
@@ -188,6 +190,8 @@ pub const Generator = struct {
                 self.rd = .t0;
                 try self.generateExpression(binary.left.*);
 
+                self.rs1 = .t0;
+                self.rs2 = .t1;
                 if (is_and) self.appendInstr(.BEQ) else self.appendInstr(.BNE);
             },
             .Less => {
