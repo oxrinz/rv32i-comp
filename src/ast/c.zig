@@ -38,14 +38,20 @@ pub const Binary = struct {
     right: *Expression,
 };
 
-pub const Factor = union(enum) {
-    constant: i32,
-    expression: *Expression,
+pub const Variable = struct {
+    identifier: []const u8,
+};
+
+pub const Assignment = struct {
+    left: *Expression,
+    right: *Expression,
 };
 
 pub const Expression = union(enum) {
-    factor: Factor,
+    constant: i32,
     binary: Binary,
+    variable: Variable,
+    assignment: Assignment,
 
     pub fn deinit(self: *Expression, allocator: std.mem.Allocator) void {
         switch (self.*) {
@@ -55,36 +61,55 @@ pub const Expression = union(enum) {
                 b.right.deinit(allocator);
                 allocator.destroy(b.right);
             },
-            .factor => |f| switch (f) {
-                .constant => {},
-                .expression => |e| {
-                    e.deinit(allocator);
-                    allocator.destroy(e);
-                },
+            .assignment => |*a| {
+                a.left.deinit(allocator);
+                allocator.destroy(a.left);
+                a.right.deinit(allocator);
+                allocator.destroy(a.right);
+            },
+            else => {},
+        }
+    }
+};
+
+pub const Return = struct {
+    exp: Expression,
+};
+
+pub const Statement = union(enum) {
+    ret: Return,
+    exp: Expression,
+
+    pub fn deinit(self: *Statement, allocator: std.mem.Allocator) void {
+        switch (self.*) {
+            .ret => {
+                self.ret.exp.deinit(allocator);
+            },
+            .exp => {
+                self.exp.deinit(allocator);
             },
         }
     }
 };
 
-pub const StatementType = union(enum) {
-    RETURN,
+pub const Declaration = struct {
+    identifier: []const u8,
+    initial: ?Expression,
 };
 
-pub const Statement = struct {
-    type: StatementType,
-    exp: Expression,
-
-    pub fn deinit(self: *Statement, allocator: std.mem.Allocator) void {
-        self.exp.deinit(allocator);
-    }
+pub const BlockItem = union(enum) {
+    statement: Statement,
+    declaration: Declaration,
 };
 
 pub const FunctionDefinition = struct {
     identifier: []const u8,
-    statement: Statement,
+    block_items: []BlockItem,
 
     pub fn deinit(self: *FunctionDefinition, allocator: std.mem.Allocator) void {
-        self.statement.deinit(allocator);
+        for (self.block_items) |item| {
+            item.statement.deinit(allocator);
+        }
     }
 };
 

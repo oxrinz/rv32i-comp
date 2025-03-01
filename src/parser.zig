@@ -44,64 +44,125 @@ pub const Parser = struct {
         self.expect(.LEFT_BRACE);
         self.cursor += 1;
 
-        const statement = self.parse_statement();
+        var function_body = std.ArrayList(c_ast.BlockItem).init(self.allocator);
 
-        return .{ .identifier = identifier, .statement = statement };
+        while (self.tokens[self.cursor].type != .RIGHT_BRACE) {
+            const block_item = self.parse_block_item();
+            function_body.append(block_item) catch @panic("Failed to allocate memory");
+            self.cursor += 1;
+        }
+
+        return .{
+            .identifier = identifier,
+            .block_items = function_body.toOwnedSlice() catch @panic("Failed to allocate memory"),
+        };
+    }
+
+    // the thing i was thinking about
+    // the assignment expression expects 2 expressions
+    // it's part of the lvalue thing, the validity of the first expression will be evaluated later
+    fn parse_block_item(self: *Parser) c_ast.BlockItem {
+        switch (self.tokens[self.cursor].type) {
+            .INT => {
+                return .{ .declaration = self.parse_declaration() };
+            },
+            else => return .{ .statement = self.parse_statement() },
+        }
+    }
+
+    fn parse_declaration(self: *Parser) c_ast.Declaration {
+        self.expect(.INT);
+        self.cursor += 1;
+        self.expect(.IDENTIFIER);
+
+        const identifier = self.tokens[self.cursor].literal.?.string;
+        self.cursor += 1;
+
+        if (self.tokens[self.cursor].type == .SEMICOLON) {
+            return .{ .identifier = identifier, .initial = null };
+        } else {
+            self.expect(.EQUAL);
+            self.cursor += 1;
+            const expression = self.parse_expression(0) catch @panic("Failed to parse expression");
+
+            return .{ .identifier = identifier, .initial = expression.* };
+        }
     }
 
     fn parse_statement(self: *Parser) c_ast.Statement {
-        self.expect(.RETURN);
-        self.cursor += 1;
-        self.expect(.NUMBER);
-        // ??????????????
-        // ??????????????
-        const expr_ptr = self.parse_expression(0) catch @panic("failed");
-        const expr = expr_ptr.*;
-        self.allocator.destroy(expr_ptr);
-        return .{
-            .type = .RETURN,
-            .exp = expr,
-        };
+        if (self.tokens[self.cursor].type == .RETURN) {
+            self.cursor += 1;
+            self.expect(.NUMBER);
+            // ??????????????
+            // ??????????????
+            const expr_ptr = self.parse_expression(0) catch @panic("Failed to parse expression");
+            const expr = expr_ptr.*;
+            self.allocator.destroy(expr_ptr);
+            return .{
+                .ret = .{ .exp = expr },
+            };
+        } else {
+            const expr_ptr = self.parse_expression(0) catch @panic("Failed to parse expression");
+            const expr = expr_ptr.*;
+            self.allocator.destroy(expr_ptr);
+            return .{
+                .exp = expr,
+            };
+        }
     }
 
     fn parse_expression(self: *Parser, min_prec: i16) ParserError!*c_ast.Expression {
         var left = try self.parse_factor();
 
         while (self.cursor < self.tokens.len and
-            tokens_script.is_binary_operator(self.tokens[self.cursor].type))
+            tokens_script.is_binary_operator(self.tokens[self.cursor].type) and
+            self.precedence(self.tokens[self.cursor]) >= min_prec)
         {
             const curr_prec = self.precedence(self.tokens[self.cursor]);
-            if (curr_prec < min_prec) break;
 
-            const operator = self.parse_binop();
-            self.cursor += 1;
+            if (self.tokens[self.cursor].type == .EQUAL) {
+                self.cursor += 1;
 
-            const right = try self.parse_expression(curr_prec + 1);
+                const right = try self.parse_expression(curr_prec);
 
-            const new_expr = try self.allocator.create(c_ast.Expression);
-            new_expr.* = .{
-                .binary = .{
-                    .operator = operator,
-                    .left = left,
-                    .right = right,
-                },
-            };
+                const new_expr = try self.allocator.create(c_ast.Expression);
+                new_expr.* = .{
+                    .assignment = .{
+                        .left = left,
+                        .right = right,
+                    },
+                };
 
-            left = new_expr;
+                left = new_expr;
+            } else {
+                const operator = self.parse_binop();
+                self.cursor += 1;
+
+                const right = try self.parse_expression(curr_prec + 1);
+
+                const new_expr = try self.allocator.create(c_ast.Expression);
+                new_expr.* = .{
+                    .binary = .{
+                        .operator = operator,
+                        .left = left,
+                        .right = right,
+                    },
+                };
+
+                left = new_expr;
+            }
         }
 
         return left;
     }
 
     fn parse_factor(self: *Parser) ParserError!*c_ast.Expression {
-        const expr = try self.allocator.create(c_ast.Expression);
+        var expr = try self.allocator.create(c_ast.Expression);
 
         switch (self.tokens[self.cursor].type) {
             .NUMBER => {
                 expr.* = .{
-                    .factor = .{
-                        .constant = self.tokens[self.cursor].literal.?.number,
-                    },
+                    .constant = self.tokens[self.cursor].literal.?.number,
                 };
                 self.cursor += 1;
             },
@@ -111,12 +172,17 @@ pub const Parser = struct {
                 self.expect(.RIGHT_PAREN);
                 self.cursor += 1;
 
+                expr = inner_expr;
+            },
+            .IDENTIFIER => {
                 expr.* = .{
-                    .factor = .{
-                        .expression = inner_expr,
+                    .variable = .{
+                        .identifier = self.tokens[self.cursor].literal.?.string,
                     },
                 };
+                self.cursor += 1;
             },
+
             else => unreachable,
         }
 
@@ -152,6 +218,7 @@ pub const Parser = struct {
     fn precedence(self: *Parser, token: Token) i16 {
         _ = self;
         switch (token.type) {
+            .EQUAL => return 1,
             .PIPE_PIPE => return 5,
             .AMPERSAND_AMPERSAND => return 10,
             .EQUAL_EQUAL, .BANG_EQUAL => return 30,

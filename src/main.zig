@@ -1,7 +1,9 @@
 const std = @import("std");
+const builtin = @import("builtin");
 const testing = std.testing;
 const Lexer = @import("lexer.zig").Lexer;
 const Parser = @import("parser.zig").Parser;
+const SemanticAnalysis = @import("semantic-analysis.zig").SemanticAnalysis;
 const Generator = @import("gen.zig").Generator;
 const Emitter = @import("emission.zig").Emitter;
 const prettyprinter = @import("prettyprinter.zig");
@@ -42,10 +44,31 @@ pub fn main() !void {
         std.process.exit(1);
     }
 
-    var lexer = Lexer.init(allocator, source);
+    const assembly: []const u8 = generate(source, allocator, debug_value) catch @panic("Failed to generate assembly");
+
+    const dirname = std.fs.path.dirname(file_path) orelse ".";
+    const stem = std.fs.path.stem(file_path);
+
+    var path_buf: [std.fs.MAX_PATH_BYTES]u8 = undefined;
+    const output_path = try std.fmt.bufPrint(&path_buf, "{s}/{s}.asm", .{
+        dirname,
+        stem,
+    });
+
+    const out_file = try std.fs.cwd().createFile(
+        output_path,
+        .{},
+    );
+    defer out_file.close();
+
+    try out_file.writeAll(assembly);
+}
+
+fn generate(input: []const u8, allocator: std.mem.Allocator, debug_value: i32) ![]const u8 {
+    var lexer = Lexer.init(allocator, input);
     lexer.scan();
 
-    if (debug_value == 1) {
+    if (debug_value == 1 and builtin.is_test == false) {
         std.debug.print("\n======== Tokens ========\n", .{});
         for (lexer.tokens.items) |token| {
             std.debug.print("{s} '{?}' at line {d}\n", .{
@@ -60,27 +83,22 @@ pub fn main() !void {
     var parser = Parser.init(lexer.tokens.items, allocator);
     const program_definition = parser.parse();
 
-    if (debug_value == 1) {
+    if (debug_value == 1 and builtin.is_test == false) {
         std.debug.print("\n======== Program ========\n", .{});
         prettyprinter.printProgram(program_definition);
         std.debug.print("===========================\n", .{});
     }
 
-    var generator = Generator.init(program_definition, allocator);
-    const program = try generator.generate();
+    var semantic = SemanticAnalysis.init(allocator);
+    const analyzed_program_definition = semantic.analyze(program_definition);
 
-    var emitter = Emitter.init(program);
-    try emitter.write(file_path, allocator);
-}
+    if (debug_value == 1 and builtin.is_test == false) {
+        std.debug.print("\n=== Semantic analysis ===\n", .{});
+        prettyprinter.printProgram(analyzed_program_definition);
+        std.debug.print("===========================\n", .{});
+    }
 
-fn generate(input: []const u8, allocator: std.mem.Allocator) ![]const u8 {
-    var lexer = Lexer.init(allocator, input);
-    lexer.scan();
-
-    var parser = Parser.init(lexer.tokens.items, allocator);
-    const program_definition = parser.parse();
-
-    var generator = Generator.init(program_definition, allocator);
+    var generator = Generator.init(analyzed_program_definition, allocator);
     const program = try generator.generate();
 
     var emitter = Emitter.init(program);

@@ -76,17 +76,6 @@ pub const Generator = struct {
         });
     }
 
-    fn generateFactor(self: *Generator, factor: c_ast.Factor) error{OutOfMemory}!void {
-        switch (factor) {
-            .constant => |constant| {
-                try self.loadImmediate(constant);
-            },
-            .expression => |expr| {
-                try self.generateExpression(expr.*);
-            },
-        }
-    }
-
     fn appendOperator(self: *Generator, operator: c_ast.BinaryOperator) void {
         switch (operator) {
             .Add => {
@@ -286,8 +275,8 @@ pub const Generator = struct {
 
     fn generateExpression(self: *Generator, exp: c_ast.Expression) error{OutOfMemory}!void {
         switch (exp) {
-            .factor => |factor| {
-                try self.generateFactor(factor);
+            .constant => |constant| {
+                try self.loadImmediate(constant);
             },
             .binary => |binary| {
                 // TODO: useful for debugging, remove or incorporate in DEBUG mode properly
@@ -316,7 +305,7 @@ pub const Generator = struct {
                 } else {
                     // check if right side expression is a constant. if it is, evaluate left side first (non constant)
                     // all expressions return t1. t0 is used for internal calculations. in other words, all right side expressions return t1, and left side return t0
-                    const right_is_const = binary.right.* == .factor and binary.right.*.factor == .constant;
+                    const right_is_const = binary.right.* == .constant;
                     if (right_is_const) {
                         self.rd = .t0;
                         try self.generateExpression(binary.left.*);
@@ -336,12 +325,13 @@ pub const Generator = struct {
                     self.appendOperator(binary.operator);
                 }
             },
+            else => @panic("Expression type not supported yet"),
         }
     }
 
     pub fn generate(self: *Generator) !asm_ast.Program {
-        if (self.program.function.statement.type == .RETURN) {
-            try self.generateExpression(self.program.function.statement.exp);
+        if (self.program.function.block_items[0].statement == .ret) {
+            try self.generateExpression(self.program.function.block_items[0].statement.ret.exp);
 
             // add label to end if branches exist
             var has_btype = false;
