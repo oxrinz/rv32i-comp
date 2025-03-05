@@ -56,17 +56,17 @@ pub const Generator = struct {
             },
             .stype => asm_ast.Instruction{
                 .stype = .{
-                    .immediate = self.immediate,
                     .instr = instr_converted.stype,
                     .source1 = self.rs1,
                     .source2 = self.rs2,
+                    .immediate = self.immediate,
                 },
             },
         };
         self.instruction_buffer.append(instruction) catch @panic("Failed to append instruction");
     }
 
-    // TODO: depracated. remove. find a better way.
+    // depracated. remove
     fn loadImmediate(self: *Generator, value: i32) !void {
         const unsigned_val: u32 = @bitCast(value);
         const upper_bits: u20 = @truncate(unsigned_val >> 12);
@@ -87,6 +87,44 @@ pub const Generator = struct {
                 .immediate = lower_bits,
             },
         });
+    }
+
+    fn getVariableId(self: *Generator, identifier: []const u8) !i32 {
+        var variable: ?i32 = null;
+        for (self.variable_store.items, 0..) |item, index| {
+            std.debug.print("Found existing variable", .{});
+            if (std.mem.eql(u8, item, identifier)) {
+                variable = @intCast(index);
+            }
+        }
+
+        if (variable == null) {
+            std.debug.print("Created new variable", .{});
+            try self.variable_store.append(identifier);
+            variable = @as(i32, @intCast(self.variable_store.items.len)) - 1;
+        }
+
+        std.debug.print("Variable id: {?}\n", .{variable});
+
+        return variable.?;
+    }
+
+    fn loadVariable(self: *Generator, identifier: []const u8) !void {
+        var variable: i32 = undefined;
+        for (self.variable_store.items, 0..) |item, index| {
+            if (std.mem.eql(u8, item, identifier)) {
+                variable = @intCast(index);
+            }
+        }
+        if (variable == undefined) @panic("Variable not found in store");
+
+        self.immediate = variable;
+        self.appendInstr(.LW);
+    }
+
+    fn store(self: *Generator, address: i32) !void {
+        self.immediate = address;
+        self.appendInstr(.SW);
     }
 
     fn appendOperator(self: *Generator, operator: c_ast.BinaryOperator) void {
@@ -167,26 +205,6 @@ pub const Generator = struct {
             .And, .Or => @panic("And and Or operators ran in appendOperator even though they have a separate function for generation. This shouldn't happen."),
             else => @panic("Unsupported binary operator"),
         }
-    }
-
-    fn getVariableId(self: *Generator, identifier: []const u8) !i32 {
-        var variable: ?i32 = null;
-        for (self.variable_store.items, 0..) |item, index| {
-            std.debug.print("Found existing variable", .{});
-            if (std.mem.eql(u8, item, identifier)) {
-                variable = @intCast(index);
-            }
-        }
-
-        if (variable == null) {
-            std.debug.print("Created new variable", .{});
-            try self.variable_store.append(identifier);
-            variable = @as(i32, @intCast(self.variable_store.items.len)) - 1;
-        }
-
-        std.debug.print("Variable id: {?}\n", .{variable});
-
-        return variable.?;
     }
 
     // small helper please remove later or find a better way to do this
@@ -288,17 +306,12 @@ pub const Generator = struct {
                 self.rd = .t0;
                 try self.loadImmediate(0);
                 self.immediate = try self.getVariableId(assignment.left.*.variable.identifier);
-                self.rs2 = .t1;
                 self.appendInstr(.SW);
             },
             .variable => |variable| {
-                // u shouldn't assign rd here
-                const prev_rd = self.rd;
                 self.rd = .t0;
                 try self.loadImmediate(0);
                 self.immediate = try self.getVariableId(variable.identifier);
-                self.rd = prev_rd;
-                self.rs1 = .t0;
                 self.appendInstr(.LW);
             },
             .constant => |constant| {
@@ -354,37 +367,19 @@ pub const Generator = struct {
         }
     }
 
-    fn generateStatement(self: *Generator, statement: c_ast.Statement) !void {
-        switch (statement) {
-            .ret => {
-                try self.generateExpression(statement.ret.exp);
-            },
-            .exp => {
-                try self.generateExpression(statement.exp);
-            },
-        }
-    }
-
-    fn generateDeclaration(self: *Generator, declaration: c_ast.Declaration) !void {
-        if (declaration.initial == null) return else {
-            try self.generateExpression(declaration.initial.?);
-            self.rd = .t0;
-            try self.loadImmediate(0);
-            self.immediate = try self.getVariableId(declaration.identifier);
-            self.rs1 = .t1;
-            self.rs2 = .t0;
-            self.appendInstr(.SW);
-        }
-    }
-
     pub fn generate(self: *Generator) !asm_ast.Program {
         for (self.program.function.block_items) |block_item| {
             switch (block_item) {
+                .declaration => {},
                 .statement => {
-                    try self.generateStatement(block_item.statement);
-                },
-                .declaration => {
-                    try self.generateDeclaration(block_item.declaration);
+                    switch (block_item.statement) {
+                        .ret => {
+                            try self.generateExpression(block_item.statement.ret.exp);
+                        },
+                        .exp => {
+                            try self.generateExpression(block_item.statement.exp);
+                        },
+                    }
                 },
             }
         }

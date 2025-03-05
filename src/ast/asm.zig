@@ -1,5 +1,20 @@
 const std = @import("std");
 
+// utils for enums, preferably have this in a separate file
+pub fn EnumMethods(comptime T: type) type {
+    return struct {
+        pub fn toString(self: T) []const u8 {
+            const str = @tagName(self);
+            comptime var max_len = 0;
+            inline for (@typeInfo(T).Enum.fields) |field| {
+                max_len = @max(max_len, field.name.len);
+            }
+            var buf: [max_len]u8 = undefined;
+            return std.ascii.lowerString(&buf, str);
+        }
+    };
+}
+
 pub const Reg = enum {
     zero,
     t0,
@@ -54,14 +69,16 @@ pub const InstructionType = enum {
     // SRA,
     SLTI,
     SLTIU,
-    // MUL,
-    // MULH,
-    // MULSU,
-    // MULU,
-    // DIV,
-    // DIVU,
-    // REM,
-    // REMU,
+
+    LB,
+    LH,
+    LW,
+    LBU,
+    LHU,
+
+    SB,
+    SH,
+    SW,
 
     BEQ,
     BNE,
@@ -71,7 +88,8 @@ pub const InstructionType = enum {
     BGEU,
 };
 
-pub fn convert(instr: InstructionType) union(enum) { rtype: RType_Inst, itype: IType_Inst, btype: BType_Inst } {
+// TODO: there has to be a cleaner way to do this
+pub fn convert(instr: InstructionType) union(enum) { rtype: RType_Inst, itype: IType_Inst, btype: BType_Inst, stype: SType_Inst } {
     const instr_name = @tagName(instr);
 
     inline for (@typeInfo(RType_Inst).Enum.fields) |field| {
@@ -92,6 +110,14 @@ pub fn convert(instr: InstructionType) union(enum) { rtype: RType_Inst, itype: I
         }
     }
 
+    inline for (@typeInfo(SType_Inst).Enum.fields) |field| {
+        if (std.mem.eql(u8, instr_name, field.name)) {
+            return .{ .stype = @field(SType_Inst, field.name) };
+        }
+    }
+
+    std.debug.print("Can't convert {} instruction\n", .{instr});
+
     unreachable;
 }
 
@@ -106,6 +132,7 @@ pub const RType_Inst = enum {
     SRA,
     SLT,
     SLTU,
+
     MUL,
     MULH,
     MULSU,
@@ -115,15 +142,7 @@ pub const RType_Inst = enum {
     REM,
     REMU,
 
-    pub fn toString(self: RType_Inst) []const u8 {
-        const str = @tagName(self);
-        comptime var max_len = 0;
-        inline for (@typeInfo(RType_Inst).Enum.fields) |field| {
-            max_len = @max(max_len, field.name.len);
-        }
-        var buf: [max_len]u8 = undefined;
-        return std.ascii.lowerString(&buf, str);
-    }
+    pub usingnamespace EnumMethods(RType_Inst);
 };
 
 pub const IType_Inst = enum {
@@ -146,15 +165,13 @@ pub const IType_Inst = enum {
     // REM,
     // REMU,
 
-    pub fn toString(self: IType_Inst) []const u8 {
-        const str = @tagName(self);
-        comptime var max_len = 0;
-        inline for (@typeInfo(RType_Inst).Enum.fields) |field| {
-            max_len = @max(max_len, field.name.len);
-        }
-        var buf: [max_len]u8 = undefined;
-        return std.ascii.lowerString(&buf, str);
-    }
+    LB,
+    LH,
+    LW,
+    LBU,
+    LHU,
+
+    pub usingnamespace EnumMethods(IType_Inst);
 };
 
 pub const BType_Inst = enum {
@@ -165,15 +182,15 @@ pub const BType_Inst = enum {
     BLTU,
     BGEU,
 
-    pub fn toString(self: BType_Inst) []const u8 {
-        const str = @tagName(self);
-        comptime var max_len = 0;
-        inline for (@typeInfo(RType_Inst).Enum.fields) |field| {
-            max_len = @max(max_len, field.name.len);
-        }
-        var buf: [max_len]u8 = undefined;
-        return std.ascii.lowerString(&buf, str);
-    }
+    pub usingnamespace EnumMethods(BType_Inst);
+};
+
+pub const SType_Inst = enum {
+    SB,
+    SH,
+    SW,
+
+    pub usingnamespace EnumMethods(SType_Inst);
 };
 
 const RType = struct {
@@ -197,6 +214,13 @@ const BType = struct {
     label: []const u8,
 };
 
+const SType = struct {
+    instr: SType_Inst,
+    source1: Reg,
+    source2: Reg,
+    immediate: i32,
+};
+
 const Label = struct {
     name: []const u8,
 };
@@ -204,7 +228,7 @@ const Label = struct {
 pub const Instruction = union(enum) {
     rtype: RType,
     itype: IType,
-    // stype: SType,
+    stype: SType,
     btype: BType,
     // utype: UType,
     // jtype: JType,

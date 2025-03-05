@@ -72,7 +72,7 @@ pub const VariableResolution = struct {
                 result.binary.right.* = self.resolve_exp(result.binary.right.*);
             },
             .assignment => {
-                if (result.assignment.left != .variable) @panic("Invalid lvalue");
+                if (result.assignment.left.* != .variable) @panic("Invalid lvalue");
                 result.assignment.left.* = self.resolve_exp(result.assignment.left.*);
                 result.assignment.right.* = self.resolve_exp(result.assignment.right.*);
             },

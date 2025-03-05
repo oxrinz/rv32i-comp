@@ -117,7 +117,7 @@ test "basic addition" {
         \\}
     ;
 
-    const actual = try generate(input, arena.allocator());
+    const actual = try generate(input, arena.allocator(), 0);
     const expected =
         \\lui t0 0
         \\addi t0 t0 2
@@ -141,7 +141,7 @@ test "less or equal" {
         \\}
     ;
 
-    const actual = try generate(input, arena.allocator());
+    const actual = try generate(input, arena.allocator(), 0);
     const expected =
         \\lui t0 0
         \\addi t0 t0 2
@@ -166,7 +166,7 @@ test "less" {
         \\}
     ;
 
-    const actual = try generate(input, arena.allocator());
+    const actual = try generate(input, arena.allocator(), 0);
     const expected =
         \\lui t0 0
         \\addi t0 t0 2
@@ -190,7 +190,7 @@ test "greater or equal" {
         \\}
     ;
 
-    const actual = try generate(input, arena.allocator());
+    const actual = try generate(input, arena.allocator(), 0);
     const expected =
         \\lui t0 0
         \\addi t0 t0 2
@@ -215,7 +215,7 @@ test "greater" {
         \\}
     ;
 
-    const actual = try generate(input, arena.allocator());
+    const actual = try generate(input, arena.allocator(), 0);
     const expected =
         \\lui t0 0
         \\addi t0 t0 2
@@ -239,7 +239,7 @@ test "equal" {
         \\}
     ;
 
-    const actual = try generate(input, arena.allocator());
+    const actual = try generate(input, arena.allocator(), 0);
     const expected =
         \\lui t0 0
         \\addi t0 t0 2
@@ -264,7 +264,7 @@ test "not equal" {
         \\}
     ;
 
-    const actual = try generate(input, arena.allocator());
+    const actual = try generate(input, arena.allocator(), 0);
     const expected =
         \\lui t0 0
         \\addi t0 t0 2
@@ -290,7 +290,7 @@ test "or short circuit 1" {
         \\}
     ;
 
-    const actual = try generate(input, arena.allocator());
+    const actual = try generate(input, arena.allocator(), 0);
 
     const expected = try std.fs.cwd().readFileAlloc(
         arena.allocator(),
@@ -312,7 +312,7 @@ test "or short circuit 2" {
         \\}
     ;
 
-    const actual = try generate(input, arena.allocator());
+    const actual = try generate(input, arena.allocator(), 0);
 
     const expected = try std.fs.cwd().readFileAlloc(
         arena.allocator(),
@@ -334,7 +334,7 @@ test "and short circuit 1" {
         \\}
     ;
 
-    const actual = try generate(input, arena.allocator());
+    const actual = try generate(input, arena.allocator(), 0);
 
     const expected = try std.fs.cwd().readFileAlloc(
         arena.allocator(),

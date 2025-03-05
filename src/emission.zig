@@ -10,7 +10,7 @@ pub const Emitter = struct {
 
     fn reg_to_string() []const u8 {}
 
-    pub fn getAssemblyString(self: *Emitter, allocator: std.mem.Allocator) ![]const u8 {
+    pub fn getAssemblyString(self: Emitter, allocator: std.mem.Allocator) ![]const u8 {
         var buffer = std.ArrayList(u8).init(allocator);
         errdefer buffer.deinit();
         const writer = buffer.writer();
@@ -26,12 +26,24 @@ pub const Emitter = struct {
                     });
                 },
                 .itype => |i| {
-                    try std.fmt.format(writer, "{s} {s} {s} {}\n", .{
-                        i.instr.toString(),
-                        i.destination.toString(),
-                        i.source.toString(),
-                        i.immediate,
-                    });
+                    switch (i.instr) {
+                        .LW, .LH, .LB, .LHU, .LBU => {
+                            try std.fmt.format(writer, "{s} {s} {}({s})\n", .{
+                                i.instr.toString(),
+                                i.destination.toString(),
+                                i.immediate,
+                                i.source.toString(),
+                            });
+                        },
+                        else => {
+                            try std.fmt.format(writer, "{s} {s} {s} {}\n", .{
+                                i.instr.toString(),
+                                i.destination.toString(),
+                                i.source.toString(),
+                                i.immediate,
+                            });
+                        },
+                    }
                 },
                 .btype => |b| {
                     try std.fmt.format(writer, "{s} {s} {s} {s}\n", .{
@@ -39,6 +51,14 @@ pub const Emitter = struct {
                         b.source1.toString(),
                         b.source2.toString(),
                         b.label,
+                    });
+                },
+                .stype => |s| {
+                    try std.fmt.format(writer, "{s} {s} {}({s})\n", .{
+                        s.instr.toString(),
+                        s.source1.toString(),
+                        s.immediate,
+                        s.source2.toString(),
                     });
                 },
                 .lui => |lui| {
@@ -59,7 +79,7 @@ pub const Emitter = struct {
         return buffer.toOwnedSlice(); // Caller owns the memory
     }
 
-    pub fn write(self: *Emitter, out_name: []const u8, allocator: std.mem.Allocator) !void {
+    pub fn write(self: Emitter, out_name: []const u8, allocator: std.mem.Allocator) !void {
         const dirname = std.fs.path.dirname(out_name) orelse ".";
         const stem = std.fs.path.stem(out_name);
 

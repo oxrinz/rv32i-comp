@@ -92,7 +92,7 @@ pub const Parser = struct {
     fn parse_statement(self: *Parser) c_ast.Statement {
         if (self.tokens[self.cursor].type == .RETURN) {
             self.cursor += 1;
-            self.expect(.NUMBER);
+
             // ??????????????
             // ??????????????
             const expr_ptr = self.parse_expression(0) catch @panic("Failed to parse expression");
