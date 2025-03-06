@@ -8,6 +8,13 @@ pub fn is_binary_operator(token: TokenType) bool {
     }
 }
 
+pub fn is_in_place_starter(token: TokenType) bool {
+    switch (token) {
+        .PLUS, .MINUS, .STAR, .SLASH, .PERCENTAGE, .AMPERSAND, .PIPE, .CARET, .LEFT_SHIFT, .RIGHT_SHIFT => return true,
+        else => return false,
+    }
+}
+
 pub const TokenType = enum {
     LEFT_PAREN,
     RIGHT_PAREN,
@@ -39,8 +46,13 @@ pub const TokenType = enum {
     NUMBER,
 
     INT,
+    IF,
+    ELSE,
     VOID,
     RETURN,
+
+    QUESTION_MARK,
+    COLON,
 
     AMPERSAND,
     AMPERSAND_AMPERSAND,

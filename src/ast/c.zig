@@ -76,9 +76,16 @@ pub const Return = struct {
     exp: Expression,
 };
 
+pub const If = struct {
+    condition: Expression,
+    then: *Statement,
+    else_: ?*Statement,
+};
+
 pub const Statement = union(enum) {
     ret: Return,
     exp: Expression,
+    if_: If,
 
     pub fn deinit(self: *Statement, allocator: std.mem.Allocator) void {
         switch (self.*) {
@@ -87,6 +94,13 @@ pub const Statement = union(enum) {
             },
             .exp => {
                 self.exp.deinit(allocator);
+            },
+            .if_ => {
+                self.if_.condition.deinit(allocator);
+                self.if_.then.deinit(allocator);
+                if (self.if_.else_) |else_stmt| {
+                    else_stmt.deinit(allocator);
+                }
             },
         }
     }

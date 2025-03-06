@@ -56,7 +56,20 @@ pub fn printStatement(stmt: c_ast.Statement, indent: usize) void {
             std.debug.print("RETURN\n", .{});
             printExpression(stmt.ret.exp, indent + 2);
         },
-        .exp => printExpression(stmt.exp, indent),
+        .exp => |expression| printExpression(expression, indent),
+        .if_ => {
+            std.debug.print("If\n", .{});
+            printExpression(stmt.if_.condition, indent + 2);
+            std.debug.print("{s}", .{spaces[0..indent]});
+            std.debug.print("Then\n", .{});
+            printStatement(stmt.if_.then.*, indent + 2);
+
+            if (stmt.if_.else_ != null) {
+                std.debug.print("{s}", .{spaces[0..indent]});
+                std.debug.print("Else\n", .{});
+                printStatement(stmt.if_.else_.?.*, indent + 2);
+            }
+        },
     }
 }
 

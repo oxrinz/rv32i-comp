@@ -11,6 +11,8 @@ pub fn initKeywords(allocator: std.mem.Allocator) !void {
     try keywords.put("int", .INT);
     try keywords.put("void", .VOID);
     try keywords.put("return", .RETURN);
+    try keywords.put("if", .IF);
+    try keywords.put("else", .ELSE);
 }
 
 pub const Lexer = struct {
@@ -142,6 +144,8 @@ pub const Lexer = struct {
             '+' => .PLUS,
             ';' => .SEMICOLON,
             '*' => .STAR,
+            '?' => .QUESTION_MARK,
+            ':' => .COLON,
             '&' => if (self.match('&')) .AMPERSAND_AMPERSAND else .AMPERSAND,
             '|' => if (self.match('|')) .PIPE_PIPE else .PIPE,
             '^' => .CARET,

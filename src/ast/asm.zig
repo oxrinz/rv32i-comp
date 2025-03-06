@@ -15,6 +15,45 @@ pub fn EnumMethods(comptime T: type) type {
     };
 }
 
+// TODO: there has to be a cleaner way to do this
+pub fn convert(instr: InstructionType) union(enum) { rtype: RType_Inst, itype: IType_Inst, btype: BType_Inst, stype: SType_Inst, jtype: JType_Inst } {
+    const instr_name = @tagName(instr);
+
+    inline for (@typeInfo(RType_Inst).Enum.fields) |field| {
+        if (std.mem.eql(u8, instr_name, field.name)) {
+            return .{ .rtype = @field(RType_Inst, field.name) };
+        }
+    }
+
+    inline for (@typeInfo(IType_Inst).Enum.fields) |field| {
+        if (std.mem.eql(u8, instr_name, field.name)) {
+            return .{ .itype = @field(IType_Inst, field.name) };
+        }
+    }
+
+    inline for (@typeInfo(BType_Inst).Enum.fields) |field| {
+        if (std.mem.eql(u8, instr_name, field.name)) {
+            return .{ .btype = @field(BType_Inst, field.name) };
+        }
+    }
+
+    inline for (@typeInfo(SType_Inst).Enum.fields) |field| {
+        if (std.mem.eql(u8, instr_name, field.name)) {
+            return .{ .stype = @field(SType_Inst, field.name) };
+        }
+    }
+
+    inline for (@typeInfo(JType_Inst).Enum.fields) |field| {
+        if (std.mem.eql(u8, instr_name, field.name)) {
+            return .{ .jtype = @field(JType_Inst, field.name) };
+        }
+    }
+
+    std.debug.print("Can't convert {} instruction\n", .{instr});
+
+    unreachable;
+}
+
 pub const Reg = enum {
     zero,
     t0,
@@ -86,40 +125,9 @@ pub const InstructionType = enum {
     BGE,
     BLTU,
     BGEU,
+
+    JAL,
 };
-
-// TODO: there has to be a cleaner way to do this
-pub fn convert(instr: InstructionType) union(enum) { rtype: RType_Inst, itype: IType_Inst, btype: BType_Inst, stype: SType_Inst } {
-    const instr_name = @tagName(instr);
-
-    inline for (@typeInfo(RType_Inst).Enum.fields) |field| {
-        if (std.mem.eql(u8, instr_name, field.name)) {
-            return .{ .rtype = @field(RType_Inst, field.name) };
-        }
-    }
-
-    inline for (@typeInfo(IType_Inst).Enum.fields) |field| {
-        if (std.mem.eql(u8, instr_name, field.name)) {
-            return .{ .itype = @field(IType_Inst, field.name) };
-        }
-    }
-
-    inline for (@typeInfo(BType_Inst).Enum.fields) |field| {
-        if (std.mem.eql(u8, instr_name, field.name)) {
-            return .{ .btype = @field(BType_Inst, field.name) };
-        }
-    }
-
-    inline for (@typeInfo(SType_Inst).Enum.fields) |field| {
-        if (std.mem.eql(u8, instr_name, field.name)) {
-            return .{ .stype = @field(SType_Inst, field.name) };
-        }
-    }
-
-    std.debug.print("Can't convert {} instruction\n", .{instr});
-
-    unreachable;
-}
 
 pub const RType_Inst = enum {
     ADD,
@@ -193,6 +201,12 @@ pub const SType_Inst = enum {
     pub usingnamespace EnumMethods(SType_Inst);
 };
 
+pub const JType_Inst = enum {
+    JAL,
+
+    pub usingnamespace EnumMethods(JType_Inst);
+};
+
 const RType = struct {
     instr: RType_Inst,
     source1: Reg,
@@ -221,6 +235,12 @@ const SType = struct {
     immediate: i32,
 };
 
+const JType = struct {
+    instr: JType_Inst,
+    destination: Reg,
+    label: []const u8,
+};
+
 const Label = struct {
     name: []const u8,
 };
@@ -231,7 +251,7 @@ pub const Instruction = union(enum) {
     stype: SType,
     btype: BType,
     // utype: UType,
-    // jtype: JType,
+    jtype: JType,
 
     lui: Lui,
 

@@ -3,6 +3,7 @@ const c_ast = @import("ast/c.zig");
 const asm_ast = @import("ast/asm.zig");
 
 pub const Generator = struct {
+    allocator: std.mem.Allocator,
     program: c_ast.Program,
     next_temp_reg: usize,
     instruction_buffer: std.ArrayList(asm_ast.Instruction),
@@ -12,9 +13,11 @@ pub const Generator = struct {
     immediate: i32,
     label: []const u8,
     variable_store: std.ArrayList([]const u8),
+    if_counter: u32,
 
     pub fn init(program: c_ast.Program, allocator: std.mem.Allocator) Generator {
         return .{
+            .allocator = allocator,
             .program = program,
             .next_temp_reg = 0,
             .instruction_buffer = std.ArrayList(asm_ast.Instruction).init(allocator),
@@ -24,6 +27,7 @@ pub const Generator = struct {
             .immediate = 0,
             .label = "",
             .variable_store = std.ArrayList([]const u8).init(allocator),
+            .if_counter = 0,
         };
     }
 
@@ -60,6 +64,13 @@ pub const Generator = struct {
                     .instr = instr_converted.stype,
                     .source1 = self.rs1,
                     .source2 = self.rs2,
+                },
+            },
+            .jtype => asm_ast.Instruction{
+                .jtype = .{
+                    .label = self.label,
+                    .instr = instr_converted.jtype,
+                    .destination = self.rd,
                 },
             },
         };
@@ -172,19 +183,15 @@ pub const Generator = struct {
     fn getVariableId(self: *Generator, identifier: []const u8) !i32 {
         var variable: ?i32 = null;
         for (self.variable_store.items, 0..) |item, index| {
-            std.debug.print("Found existing variable", .{});
             if (std.mem.eql(u8, item, identifier)) {
                 variable = @intCast(index);
             }
         }
 
         if (variable == null) {
-            std.debug.print("Created new variable", .{});
             try self.variable_store.append(identifier);
             variable = @as(i32, @intCast(self.variable_store.items.len)) - 1;
         }
-
-        std.debug.print("Variable id: {?}\n", .{variable});
 
         return variable.?;
     }
@@ -288,7 +295,8 @@ pub const Generator = struct {
                 self.rd = .t0;
                 try self.loadImmediate(0);
                 self.immediate = try self.getVariableId(assignment.left.*.variable.identifier);
-                self.rs2 = .t1;
+                self.rs1 = .t1;
+                self.rs2 = .t0;
                 self.appendInstr(.SW);
             },
             .variable => |variable| {
@@ -356,17 +364,56 @@ pub const Generator = struct {
 
     fn generateStatement(self: *Generator, statement: c_ast.Statement) !void {
         switch (statement) {
-            .ret => {
-                try self.generateExpression(statement.ret.exp);
+            .ret => |ret| {
+                try self.generateExpression(ret.exp);
             },
-            .exp => {
-                try self.generateExpression(statement.exp);
+            .exp => |exp| {
+                try self.generateExpression(exp);
+            },
+            .if_ => |if_| {
+                var if_name_array = std.ArrayList(u8).init(self.allocator);
+                defer if_name_array.deinit();
+                try std.fmt.format(if_name_array.writer(), "if_end_{d}", .{self.if_counter});
+                const if_name = try if_name_array.toOwnedSlice();
+                var else_name_array = std.ArrayList(u8).init(self.allocator);
+                defer else_name_array.deinit();
+                try std.fmt.format(else_name_array.writer(), "else_end_{d}", .{self.if_counter});
+                const else_name = try else_name_array.toOwnedSlice();
+
+                try self.generateExpression(if_.condition);
+
+                self.rs1 = .zero;
+                self.label = if_name;
+                self.appendInstr(.BEQ);
+
+                try self.generateStatement(if_.then.*);
+                if (if_.else_ != null) {
+                    self.label = else_name;
+                    self.appendInstr(.JAL);
+                }
+
+                try self.instruction_buffer.append(
+                    .{
+                        .label = .{ .name = if_name },
+                    },
+                );
+
+                if (if_.else_ != null) {
+                    try self.generateStatement(if_.else_.?.*);
+
+                    try self.instruction_buffer.append(
+                        .{
+                            .label = .{ .name = else_name },
+                        },
+                    );
+                }
             },
         }
     }
 
     fn generateDeclaration(self: *Generator, declaration: c_ast.Declaration) !void {
         if (declaration.initial == null) return else {
+            self.rd = .t1;
             try self.generateExpression(declaration.initial.?);
             self.rd = .t0;
             try self.loadImmediate(0);

@@ -61,6 +61,13 @@ pub const Emitter = struct {
                         s.source2.toString(),
                     });
                 },
+                .jtype => |j| {
+                    try std.fmt.format(writer, "{s} {s} {s}\n", .{
+                        j.instr.toString(),
+                        j.destination.toString(),
+                        j.label,
+                    });
+                },
                 .lui => |lui| {
                     const imm = @as(i32, @intCast(lui.imm));
                     try std.fmt.format(writer, "lui {s} {}\n", .{

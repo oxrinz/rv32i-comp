@@ -56,6 +56,24 @@ pub const VariableResolution = struct {
             .ret => {
                 result.ret.exp = self.resolve_exp(result.ret.exp);
             },
+            .if_ => {
+                var else_: ?*c_ast.Statement = null;
+                if (result.if_.else_ != null) {
+                    const resolved_else = self.resolve_statement(result.if_.else_.?.*);
+                    else_ = self.allocator.create(c_ast.Statement) catch @panic("Failed to allocate memory");
+                    else_.?.* = resolved_else;
+                }
+
+                const resolved_then = self.resolve_statement(result.if_.then.*);
+                const then_statement = self.allocator.create(c_ast.Statement) catch @panic("Failed to allocate memory");
+                then_statement.* = resolved_then;
+
+                result.if_ = .{
+                    .condition = self.resolve_exp(result.if_.condition),
+                    .then = then_statement,
+                    .else_ = else_,
+                };
+            },
         }
         return result;
     }
