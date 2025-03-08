@@ -14,7 +14,7 @@ pub const LoopLabeling = struct {
 
     pub fn label(self: *LoopLabeling, program: c_ast.Program) c_ast.Program {
         var result = program;
-        self.labelFunction(&result.function, null);
+        self.labelFunction(&result.function[0], null);
         return result;
     }
 
@@ -24,8 +24,8 @@ pub const LoopLabeling = struct {
         return id;
     }
 
-    fn labelFunction(self: *LoopLabeling, function: *c_ast.FunctionDefinition, loop_ctx: ?[]const u8) void {
-        for (function.block.block_items) |*item| {
+    fn labelFunction(self: *LoopLabeling, function: *c_ast.FunctionDeclaration, loop_ctx: ?[]const u8) void {
+        for (function.body.?.block_items) |*item| {
             self.labelBlockItem(item, loop_ctx);
         }
     }

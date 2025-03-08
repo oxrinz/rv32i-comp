@@ -460,12 +460,12 @@ test "multiple scopes variable resolution" {
     var semantic = SemanticAnalysis.init(allocator);
     const analyzed_program_definition = semantic.analyze(program_definition);
 
-    try std.testing.expectEqualStrings("var_0", analyzed_program_definition.function.block.block_items[0].declaration.identifier);
-    try std.testing.expectEqualStrings("var_1", analyzed_program_definition.function.block.block_items[1].statement.compound.block_items[0].declaration.identifier);
-    try std.testing.expectEqualStrings("var_1", analyzed_program_definition.function.block.block_items[1].statement.compound.block_items[1].statement.if_.then.compound.block_items[0].statement.exp.assignment.left.variable.identifier);
-    try std.testing.expectEqualStrings("var_2", analyzed_program_definition.function.block.block_items[1].statement.compound.block_items[1].statement.if_.then.compound.block_items[1].declaration.identifier);
-    try std.testing.expectEqualStrings("var_1", analyzed_program_definition.function.block.block_items[1].statement.compound.block_items[2].statement.ret.exp.variable.identifier);
-    try std.testing.expectEqualStrings("var_0", analyzed_program_definition.function.block.block_items[2].statement.ret.exp.variable.identifier);
+    try std.testing.expectEqualStrings("var_0", analyzed_program_definition.function[0].body.?.block_items[0].declaration.variable_declaration.identifier);
+    try std.testing.expectEqualStrings("var_1", analyzed_program_definition.function[0].body.?.block_items[1].statement.compound.block_items[0].declaration.variable_declaration.identifier);
+    try std.testing.expectEqualStrings("var_1", analyzed_program_definition.function[0].body.?.block_items[1].statement.compound.block_items[1].statement.if_.then.compound.block_items[0].statement.exp.assignment.left.variable.identifier);
+    try std.testing.expectEqualStrings("var_2", analyzed_program_definition.function[0].body.?.block_items[1].statement.compound.block_items[1].statement.if_.then.compound.block_items[1].declaration.variable_declaration.identifier);
+    try std.testing.expectEqualStrings("var_1", analyzed_program_definition.function[0].body.?.block_items[1].statement.compound.block_items[2].statement.ret.exp.variable.identifier);
+    try std.testing.expectEqualStrings("var_0", analyzed_program_definition.function[0].body.?.block_items[2].statement.ret.exp.variable.identifier);
 }
 
 test "loop labeling" {
@@ -500,10 +500,10 @@ test "loop labeling" {
     var semantic = SemanticAnalysis.init(allocator);
     const analyzed_program_definition = semantic.analyze(program_definition);
 
-    try std.testing.expectEqualStrings("loop_0", analyzed_program_definition.function.block.block_items[2].statement.while_.identifier.?);
-    try std.testing.expectEqualStrings("loop_1", analyzed_program_definition.function.block.block_items[2].statement.while_.body.compound.block_items[0].statement.for_.identifier.?);
-    try std.testing.expectEqualStrings("loop_1", analyzed_program_definition.function.block.block_items[2].statement.while_.body.compound.block_items[0].statement.for_.body.compound.block_items[0].statement.if_.then.continue_.identifier.?);
-    try std.testing.expectEqualStrings("loop_0", analyzed_program_definition.function.block.block_items[2].statement.while_.body.compound.block_items[1].statement.if_.then.*.break_.identifier.?);
+    try std.testing.expectEqualStrings("loop_0", analyzed_program_definition.function[0].body.?.block_items[2].statement.while_.identifier.?);
+    try std.testing.expectEqualStrings("loop_1", analyzed_program_definition.function[0].body.?.block_items[2].statement.while_.body.compound.block_items[0].statement.for_.identifier.?);
+    try std.testing.expectEqualStrings("loop_1", analyzed_program_definition.function[0].body.?.block_items[2].statement.while_.body.compound.block_items[0].statement.for_.body.compound.block_items[0].statement.if_.then.continue_.identifier.?);
+    try std.testing.expectEqualStrings("loop_0", analyzed_program_definition.function[0].body.?.block_items[2].statement.while_.body.compound.block_items[1].statement.if_.then.*.break_.identifier.?);
 }
 
 test "while loop" {

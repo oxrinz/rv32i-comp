@@ -368,6 +368,7 @@ pub const Generator = struct {
                     self.appendOperator(binary.operator);
                 }
             },
+            .function_call => {},
         }
     }
 
@@ -464,7 +465,7 @@ pub const Generator = struct {
                 const identifier_break = try std.fmt.allocPrint(self.allocator, "break_{s}", .{for_.identifier.?});
 
                 switch (for_.init) {
-                    .init_decl => try self.generateDeclaration(for_.init.init_decl),
+                    .init_decl => try self.generateDeclaration(.{ .variable_declaration = for_.init.init_decl }),
                     .init_exp => if (for_.init.init_exp != null) try self.generateExpression(for_.init.init_exp.?),
                 }
 
@@ -511,20 +512,25 @@ pub const Generator = struct {
     }
 
     fn generateDeclaration(self: *Generator, declaration: c_ast.Declaration) !void {
-        if (declaration.initial == null) return else {
-            self.rd = .t1;
-            try self.generateExpression(declaration.initial.?);
-            self.rd = .t0;
-            try self.loadImmediate(try self.getVariableId(declaration.identifier));
-            self.immediate = 0;
-            self.rs1 = .t1;
-            self.rs2 = .t0;
-            self.appendInstr(.SW);
+        switch (declaration) {
+            .variable_declaration => {
+                if (declaration.variable_declaration.initial == null) return else {
+                    self.rd = .t1;
+                    try self.generateExpression(declaration.variable_declaration.initial.?);
+                    self.rd = .t0;
+                    try self.loadImmediate(try self.getVariableId(declaration.variable_declaration.identifier));
+                    self.immediate = 0;
+                    self.rs1 = .t1;
+                    self.rs2 = .t0;
+                    self.appendInstr(.SW);
+                }
+            },
+            else => {},
         }
     }
 
     pub fn generate(self: *Generator) !asm_ast.Program {
-        for (self.program.function.block.block_items) |block_item| {
+        for (self.program.function[0].body.?.block_items) |block_item| {
             switch (block_item) {
                 .statement => {
                     try self.generateStatement(block_item.statement);
@@ -551,7 +557,7 @@ pub const Generator = struct {
 
         return .{
             .function = .{
-                .identifier = self.program.function.identifier,
+                .identifier = self.program.function[0].identifier,
                 .instructions = try self.instruction_buffer.toOwnedSlice(),
             },
         };

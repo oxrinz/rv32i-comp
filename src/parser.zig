@@ -24,16 +24,20 @@ pub const Parser = struct {
     }
 
     pub fn parse(self: *Parser) c_ast.Program {
-        return .{ .function = self.parseFunction() };
+        var function_array = std.ArrayList(c_ast.FunctionDeclaration).init(self.allocator);
+        while (self.cursor < self.tokens.len - 1) {
+            function_array.append(self.parseFunction()) catch @panic("Failed to allocate memory");
+        }
+        return .{ .function = function_array.toOwnedSlice() catch @panic("Failed to allocate memory") };
     }
 
     // TODO: can't start function with a left paren
-    fn parseFunction(self: *Parser) c_ast.FunctionDefinition {
+    fn parseFunction(self: *Parser) c_ast.FunctionDeclaration {
         self.expect(.INT);
         self.cursor += 1;
         self.expect(.IDENTIFIER);
 
-        const identifier = self.tokens[self.cursor].literal.?.string;
+        const identifier = self.curr().literal.?.string;
 
         self.cursor += 1;
         self.expect(.LEFT_PAREN);
@@ -46,14 +50,15 @@ pub const Parser = struct {
 
         return .{
             .identifier = identifier,
-            .block = self.parseBlock(),
+            .params = &[0][]const u8{},
+            .body = self.parseBlock(),
         };
     }
 
     fn parseBlock(self: *Parser) c_ast.Block {
         var function_body = std.ArrayList(c_ast.BlockItem).init(self.allocator);
 
-        while (self.tokens[self.cursor].type != .RIGHT_BRACE) {
+        while (self.curr().type != .RIGHT_BRACE) {
             const block_item = self.parseBlockItem() catch @panic("Failed to parse block item");
             function_body.append(block_item) catch @panic("Failed to allocate memory");
             self.cursor += 1;
@@ -64,41 +69,64 @@ pub const Parser = struct {
         };
     }
 
-    // the thing i was thinking about
-    // the assignment expression expects 2 expressions
-    // it's part of the lvalue thing, the validity of the first expression will be evaluated later
     fn parseBlockItem(self: *Parser) !c_ast.BlockItem {
-        switch (self.tokens[self.cursor].type) {
+        switch (self.curr().type) {
             .INT => {
-                return .{ .declaration = self.parseDeclaration() };
+                return .{ .declaration = try self.parseDeclaration() };
             },
             else => return .{ .statement = try self.parseStatement() },
         }
     }
 
-    fn parseDeclaration(self: *Parser) c_ast.Declaration {
+    fn parseDeclaration(self: *Parser) !c_ast.Declaration {
         self.expect(.INT);
         self.cursor += 1;
         self.expect(.IDENTIFIER);
 
-        const identifier = self.tokens[self.cursor].literal.?.string;
+        const identifier = self.curr().literal.?.string;
         self.cursor += 1;
 
-        if (self.tokens[self.cursor].type == .SEMICOLON) {
-            return .{ .identifier = identifier, .initial = null };
-        } else {
-            self.expect(.EQUAL);
-            self.cursor += 1;
-            const expression = self.parseExpression(0) catch @panic("Failed to parse expression");
+        switch (self.curr().type) {
+            .SEMICOLON => {
+                return .{
+                    .variable_declaration = .{
+                        .identifier = identifier,
+                        .initial = null,
+                    },
+                };
+            },
+            .LEFT_PAREN => {
+                self.cursor += 1;
 
-            return .{ .identifier = identifier, .initial = expression.* };
+                const params = try self.parseFunctionParams();
+
+                var body: ?c_ast.Block = null;
+                if (self.curr().type != .SEMICOLON) {
+                    body = self.parseBlock();
+                }
+
+                return .{
+                    .function_declaration = c_ast.FunctionDeclaration{
+                        .identifier = identifier,
+                        .params = params,
+                        .body = body,
+                    },
+                };
+            },
+            else => {
+                self.expect(.EQUAL);
+                self.cursor += 1;
+                const expression = self.parseExpression(0) catch @panic("Failed to parse expression");
+
+                return .{ .variable_declaration = .{ .identifier = identifier, .initial = expression.* } };
+            },
         }
     }
 
     // fn parseIf(self: *Parser) c_ast.If {}
 
     fn parseStatement(self: *Parser) !c_ast.Statement {
-        switch (self.tokens[self.cursor].type) {
+        switch (self.curr().type) {
             .RETURN => {
                 self.cursor += 1;
 
@@ -125,7 +153,7 @@ pub const Parser = struct {
 
                 var else_ptr: ?*c_ast.Statement = null;
 
-                if (self.tokens[self.cursor + 1].type == .ELSE) {
+                if (self.peek(1).type == .ELSE) {
                     self.cursor += 2;
                     const else_ = try self.parseStatement();
                     else_ptr = self.allocator.create(c_ast.Statement) catch @panic("Failed to allocate memory");
@@ -199,21 +227,22 @@ pub const Parser = struct {
                 self.cursor += 1;
 
                 var for_init: c_ast.ForInit = undefined;
-                if (self.tokens[self.cursor].type == .INT) {
-                    for_init = .{ .init_decl = self.parseDeclaration() };
+                if (self.curr().type == .INT) {
+                    const declaration = try self.parseDeclaration();
+                    for_init = .{ .init_decl = declaration.variable_declaration };
                 } else {
                     const expression = try self.parseExpression(0);
                     for_init = .{ .init_exp = expression.* };
                 }
 
                 var condition: ?*c_ast.Expression = null;
-                if (self.tokens[self.cursor].type != .RIGHT_PAREN) {
+                if (self.curr().type != .RIGHT_PAREN) {
                     self.cursor += 1;
                     condition = try self.parseExpression(0);
                 }
 
                 var post: ?*c_ast.Expression = null;
-                if (self.tokens[self.cursor].type != .RIGHT_PAREN) {
+                if (self.curr().type != .RIGHT_PAREN) {
                     self.cursor += 1;
                     post = try self.parseExpression(0);
                 }
@@ -248,12 +277,12 @@ pub const Parser = struct {
         var left = try self.parseFactor();
 
         while (self.cursor < self.tokens.len and
-            tokens_script.is_binary_operator(self.tokens[self.cursor].type) and
-            self.precedence(self.tokens[self.cursor]) >= min_prec)
+            tokens_script.is_binary_operator(self.curr().type) and
+            self.precedence(self.curr()) >= min_prec)
         {
-            const curr_prec = self.precedence(self.tokens[self.cursor]);
+            const curr_prec = self.precedence(self.curr());
 
-            if (self.tokens[self.cursor].type == .EQUAL) {
+            if (self.curr().type == .EQUAL) {
                 self.cursor += 1;
                 const right = try self.parseExpression(curr_prec);
 
@@ -269,7 +298,7 @@ pub const Parser = struct {
             }
             // check inplace operators
             //
-            else if (tokens_script.is_in_place_starter(self.tokens[self.cursor].type) == true and self.tokens[self.cursor - 1].type == .IDENTIFIER and self.tokens[self.cursor + 1].type == .EQUAL) {
+            else if (tokens_script.is_in_place_starter(self.curr().type) == true and self.peek(-1).type == .IDENTIFIER and self.peek(1).type == .EQUAL) {
                 const operator = self.parseBinop();
                 self.cursor += 1;
                 self.expect(.EQUAL);
@@ -277,7 +306,7 @@ pub const Parser = struct {
 
                 const variable_expr = try self.allocator.create(c_ast.Expression);
                 variable_expr.* = .{
-                    .variable = .{ .identifier = self.tokens[self.cursor - 3].literal.?.string },
+                    .variable = .{ .identifier = self.peek(-3).literal.?.string },
                 };
 
                 const binary_expr = try self.allocator.create(c_ast.Expression);
@@ -323,10 +352,10 @@ pub const Parser = struct {
     fn parseFactor(self: *Parser) ParserError!*c_ast.Expression {
         var expr = try self.allocator.create(c_ast.Expression);
 
-        switch (self.tokens[self.cursor].type) {
+        switch (self.curr().type) {
             .NUMBER => {
                 expr.* = .{
-                    .constant = self.tokens[self.cursor].literal.?.number,
+                    .constant = self.curr().literal.?.number,
                 };
                 self.cursor += 1;
             },
@@ -339,19 +368,32 @@ pub const Parser = struct {
                 expr = inner_expr;
             },
             .IDENTIFIER => {
-                expr.* = .{
-                    .variable = .{
-                        .identifier = self.tokens[self.cursor].literal.?.string,
+                switch (self.peek(1).type) {
+                    .LEFT_PAREN => {
+                        self.cursor += 2;
+                        expr.* = .{
+                            .function_call = c_ast.FunctionCall{
+                                .identifier = self.peek(-2).literal.?.string,
+                                .args = try self.parseFunctionArgs(),
+                            },
+                        };
                     },
-                };
-                self.cursor += 1;
+                    else => {
+                        expr.* = .{
+                            .variable = .{
+                                .identifier = self.curr().literal.?.string,
+                            },
+                        };
+                        self.cursor += 1;
+                    },
+                }
             },
             else => {
                 var buf: [128]u8 = undefined;
                 var fba = std.heap.FixedBufferAllocator.init(&buf);
                 const msg = std.fmt.allocPrint(fba.allocator(), "Syntax error at line {}. Expected one of the following: NUMBER, LEFT_PAREN, IDENTIFIER. Got token type {}", .{
-                    self.tokens[self.cursor].line,
-                    self.tokens[self.cursor].type,
+                    self.curr().line,
+                    self.curr().type,
                 }) catch "Syntax error";
                 @panic(msg);
             },
@@ -360,8 +402,48 @@ pub const Parser = struct {
         return expr;
     }
 
+    fn parseFunctionParams(self: *Parser) ![][]const u8 {
+        var param_list = std.ArrayList([]const u8).init(self.allocator);
+
+        self.expect(.INT);
+        self.cursor += 1;
+        try param_list.append(self.curr().literal.?.string);
+        self.cursor += 1;
+
+        while (self.curr().type != .RIGHT_PAREN) {
+            self.expect(.COMMA);
+            self.cursor += 1;
+            self.expect(.INT);
+            self.cursor += 1;
+            try param_list.append(self.curr().literal.?.string);
+            self.cursor += 1;
+        }
+
+        self.expect(.RIGHT_PAREN);
+        self.cursor += 1;
+
+        return try param_list.toOwnedSlice();
+    }
+
+    fn parseFunctionArgs(self: *Parser) ![]*c_ast.Expression {
+        var param_list = std.ArrayList(*c_ast.Expression).init(self.allocator);
+
+        try param_list.append(try self.parseExpression(0));
+
+        while (self.curr().type != .RIGHT_PAREN) {
+            self.expect(.COMMA);
+            self.cursor += 1;
+            try param_list.append(try self.parseExpression(0));
+        }
+
+        self.expect(.RIGHT_PAREN);
+        self.cursor += 1;
+
+        return try param_list.toOwnedSlice();
+    }
+
     fn parseBinop(self: *Parser) c_ast.BinaryOperator {
-        switch (self.tokens[self.cursor].type) {
+        switch (self.curr().type) {
             .PLUS => return .Add,
             .MINUS => return .Subtract,
             .STAR => return .Multiply,
@@ -405,15 +487,27 @@ pub const Parser = struct {
     }
 
     fn expect(self: *Parser, token_type: TokenType) void {
-        if (self.tokens[self.cursor].type != token_type) {
+        if (self.curr().type != token_type) {
             var buf: [128]u8 = undefined;
             var fba = std.heap.FixedBufferAllocator.init(&buf);
             const msg = std.fmt.allocPrint(fba.allocator(), "Syntax error at line {}. Expected token type {}. Got token type {}", .{
-                self.tokens[self.cursor].line,
+                self.curr().line,
                 token_type,
-                self.tokens[self.cursor].type,
+                self.curr().type,
             }) catch "Syntax error";
             @panic(msg);
         }
+    }
+
+    fn curr(self: *Parser) Token {
+        return self.tokens[self.cursor];
+    }
+
+    fn peek(self: *Parser, offset: i32) Token {
+        return self.tokens[@intCast(@as(i32, @intCast(self.cursor)) + offset)];
+    }
+
+    fn printCurr(self: *Parser) void {
+        std.debug.print("Current token: {}\n", .{self.curr()});
     }
 };

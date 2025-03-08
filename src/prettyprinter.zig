@@ -41,6 +41,12 @@ pub fn printExpression(exp: c_ast.Expression, indent: usize) void {
             printExpression(a.left.*, indent + 4);
             printExpression(a.right.*, indent + 4);
         },
+        .function_call => |fc| {
+            std.debug.print("Function Call: {s}()\n", .{fc.identifier});
+            for (fc.args) |arg| {
+                printExpression(arg.*, indent + 4);
+            }
+        },
     }
 }
 
@@ -103,7 +109,7 @@ pub fn printStatement(stmt: c_ast.Statement, indent: usize) void {
                     printExpression(init_exp.?, indent + 4);
                 },
                 .init_decl => |init_decl| {
-                    printDeclaration(init_decl, indent + 4);
+                    printDeclaration(.{ .variable_declaration = init_decl }, indent + 4);
                 },
             }
             std.debug.print("{s}Condition:\n", .{spaces[0 .. indent + 2]});
@@ -140,9 +146,16 @@ pub fn printStatement(stmt: c_ast.Statement, indent: usize) void {
 
 pub fn printDeclaration(decl: c_ast.Declaration, indent: usize) void {
     const spaces = " " ** 64;
-    std.debug.print("{s}Declaration: {s}\n", .{ spaces[0..indent], decl.identifier });
-    if (decl.initial) |initial| {
-        printExpression(initial, indent + 2);
+    switch (decl) {
+        .variable_declaration => |var_decl| {
+            std.debug.print("{s}Declaration: {s}\n", .{ spaces[0..indent], var_decl.identifier });
+            if (var_decl.initial) |initial| {
+                printExpression(initial, indent + 2);
+            }
+        },
+        .function_declaration => |func_decl| {
+            printFunction(func_decl, indent);
+        },
     }
 }
 
@@ -153,16 +166,30 @@ pub fn printBlockItem(item: c_ast.BlockItem, indent: usize) void {
     }
 }
 
-pub fn printFunction(func: c_ast.FunctionDefinition, indent: usize) void {
+pub fn printFunction(func: c_ast.FunctionDeclaration, indent: usize) void {
     const spaces = " " ** 64;
     std.debug.print("{s}Function: {s}\n", .{ spaces[0..indent], func.identifier });
-    std.debug.print("{s}Body:\n", .{spaces[0..indent]});
-    for (func.block.block_items) |item| {
-        printBlockItem(item, indent + 2);
+
+    // Print parameters
+    if (func.params.len > 0) {
+        std.debug.print("{s}Parameters:\n", .{spaces[0..indent]});
+        for (func.params) |param| {
+            std.debug.print("{s}{s}\n", .{ spaces[0 .. indent + 2], param });
+        }
+    }
+
+    // Print body if it exists
+    if (func.body) |body| {
+        std.debug.print("{s}Body:\n", .{spaces[0..indent]});
+        for (body.block_items) |item| {
+            printBlockItem(item, indent + 2);
+        }
     }
 }
 
 pub fn printProgram(program: c_ast.Program) void {
     std.debug.print("Program:\n", .{});
-    printFunction(program.function, 2);
+    for (program.function) |function| {
+        printFunction(function, 2);
+    }
 }

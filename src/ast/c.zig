@@ -47,29 +47,17 @@ pub const Assignment = struct {
     right: *Expression,
 };
 
+pub const FunctionCall = struct {
+    identifier: []const u8,
+    args: []*Expression,
+};
+
 pub const Expression = union(enum) {
     constant: i32,
     binary: Binary,
     variable: Variable,
     assignment: Assignment,
-
-    pub fn deinit(self: *Expression, allocator: std.mem.Allocator) void {
-        switch (self.*) {
-            .binary => |*b| {
-                b.left.deinit(allocator);
-                allocator.destroy(b.left);
-                b.right.deinit(allocator);
-                allocator.destroy(b.right);
-            },
-            .assignment => |*a| {
-                a.left.deinit(allocator);
-                allocator.destroy(a.left);
-                a.right.deinit(allocator);
-                allocator.destroy(a.right);
-            },
-            else => {},
-        }
-    }
+    function_call: FunctionCall,
 };
 
 pub const Return = struct {
@@ -95,7 +83,7 @@ pub const DoWhile = struct {
 };
 
 pub const ForInit = union(enum) {
-    init_decl: Declaration,
+    init_decl: VariableDeclaration,
     init_exp: ?Expression,
 };
 
@@ -125,29 +113,22 @@ pub const Statement = union(enum) {
     while_: While,
     do_while: DoWhile,
     for_: For,
-
-    pub fn deinit(self: *Statement, allocator: std.mem.Allocator) void {
-        switch (self.*) {
-            .ret => {
-                self.ret.exp.deinit(allocator);
-            },
-            .exp => {
-                self.exp.deinit(allocator);
-            },
-            .if_ => {
-                self.if_.condition.deinit(allocator);
-                self.if_.then.deinit(allocator);
-                if (self.if_.else_) |else_stmt| {
-                    else_stmt.deinit(allocator);
-                }
-            },
-        }
-    }
 };
 
-pub const Declaration = struct {
+pub const VariableDeclaration = struct {
     identifier: []const u8,
     initial: ?Expression,
+};
+
+pub const FunctionDeclaration = struct {
+    identifier: []const u8,
+    params: [][]const u8,
+    body: ?Block,
+};
+
+pub const Declaration = union(enum) {
+    variable_declaration: VariableDeclaration,
+    function_declaration: FunctionDeclaration,
 };
 
 pub const BlockItem = union(enum) {
@@ -159,21 +140,6 @@ pub const Block = struct {
     block_items: []BlockItem,
 };
 
-pub const FunctionDefinition = struct {
-    identifier: []const u8,
-    block: Block,
-
-    pub fn deinit(self: *FunctionDefinition, allocator: std.mem.Allocator) void {
-        for (self.block_items) |item| {
-            item.statement.deinit(allocator);
-        }
-    }
-};
-
 pub const Program = struct {
-    function: FunctionDefinition,
-
-    pub fn deinit(self: *Program, allocator: std.mem.Allocator) void {
-        self.function.deinit(allocator);
-    }
+    function: []FunctionDeclaration,
 };
