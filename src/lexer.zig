@@ -9,10 +9,18 @@ pub fn initKeywords(allocator: std.mem.Allocator) !void {
     keywords = std.StringHashMap(TokenType).init(allocator);
 
     try keywords.put("int", .INT);
+
     try keywords.put("void", .VOID);
     try keywords.put("return", .RETURN);
+
     try keywords.put("if", .IF);
     try keywords.put("else", .ELSE);
+
+    try keywords.put("break", .BREAK);
+    try keywords.put("continue", .CONTINUE);
+    try keywords.put("while", .WHILE);
+    try keywords.put("do", .DO);
+    try keywords.put("for", .FOR);
 }
 
 pub const Lexer = struct {
@@ -144,6 +152,7 @@ pub const Lexer = struct {
             '+' => .PLUS,
             ';' => .SEMICOLON,
             '*' => .STAR,
+            '%' => .PERCENTAGE,
             '?' => .QUESTION_MARK,
             ':' => .COLON,
             '&' => if (self.match('&')) .AMPERSAND_AMPERSAND else .AMPERSAND,

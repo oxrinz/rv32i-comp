@@ -82,10 +82,49 @@ pub const If = struct {
     else_: ?*Statement,
 };
 
+pub const While = struct {
+    condition: Expression,
+    body: *Statement,
+    identifier: ?[]const u8,
+};
+
+pub const DoWhile = struct {
+    condition: Expression,
+    body: *Statement,
+    identifier: ?[]const u8,
+};
+
+pub const ForInit = union(enum) {
+    init_decl: Declaration,
+    init_exp: ?Expression,
+};
+
+pub const For = struct {
+    init: ForInit,
+    condition: ?Expression,
+    post: ?Expression,
+    body: *Statement,
+    identifier: ?[]const u8,
+};
+
+pub const Break = struct {
+    identifier: ?[]const u8,
+};
+
+pub const Continue = struct {
+    identifier: ?[]const u8,
+};
+
 pub const Statement = union(enum) {
     ret: Return,
     exp: Expression,
+    compound: Block,
     if_: If,
+    break_: Break,
+    continue_: Continue,
+    while_: While,
+    do_while: DoWhile,
+    for_: For,
 
     pub fn deinit(self: *Statement, allocator: std.mem.Allocator) void {
         switch (self.*) {
@@ -116,9 +155,13 @@ pub const BlockItem = union(enum) {
     declaration: Declaration,
 };
 
+pub const Block = struct {
+    block_items: []BlockItem,
+};
+
 pub const FunctionDefinition = struct {
     identifier: []const u8,
-    block_items: []BlockItem,
+    block: Block,
 
     pub fn deinit(self: *FunctionDefinition, allocator: std.mem.Allocator) void {
         for (self.block_items) |item| {

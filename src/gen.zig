@@ -31,6 +31,10 @@ pub const Generator = struct {
         };
     }
 
+    fn appendLabel(self: *Generator, label: []const u8) !void {
+        try self.instruction_buffer.append(.{ .label = .{ .name = label } });
+    }
+
     fn appendInstr(self: *Generator, instr: asm_ast.InstructionType) void {
         const instr_converted = asm_ast.convert(instr);
         const instruction = switch (instr_converted) {
@@ -114,6 +118,9 @@ pub const Generator = struct {
             .Divide => {
                 self.appendInstr(.DIV);
             },
+            .Remainder => {
+                self.appendInstr(.REM);
+            },
             .Bitwise_AND => {
                 self.appendInstr(.AND);
             },
@@ -176,7 +183,6 @@ pub const Generator = struct {
                 self.rs1 = asm_ast.Reg.t0;
             },
             .And, .Or => @panic("And and Or operators ran in appendOperator even though they have a separate function for generation. This shouldn't happen."),
-            else => @panic("Unsupported binary operator"),
         }
     }
 
@@ -291,22 +297,23 @@ pub const Generator = struct {
     fn generateExpression(self: *Generator, exp: c_ast.Expression) error{OutOfMemory}!void {
         switch (exp) {
             .assignment => |assignment| {
+                self.rd = .t1;
                 try self.generateExpression(assignment.right.*);
                 self.rd = .t0;
-                try self.loadImmediate(0);
-                self.immediate = try self.getVariableId(assignment.left.*.variable.identifier);
+                try self.loadImmediate(try self.getVariableId(assignment.left.*.variable.identifier));
                 self.rs1 = .t1;
                 self.rs2 = .t0;
+                self.immediate = 0;
                 self.appendInstr(.SW);
             },
             .variable => |variable| {
                 // u shouldn't assign rd here
                 const prev_rd = self.rd;
                 self.rd = .t0;
-                try self.loadImmediate(0);
-                self.immediate = try self.getVariableId(variable.identifier);
+                try self.loadImmediate(try self.getVariableId(variable.identifier));
                 self.rd = prev_rd;
                 self.rs1 = .t0;
+                self.immediate = 0;
                 self.appendInstr(.LW);
             },
             .constant => |constant| {
@@ -345,7 +352,9 @@ pub const Generator = struct {
                         try self.generateExpression(binary.left.*);
                     }
 
-                    self.rd = .t1;
+                    // weird edge case for when precedence is higher on left side
+                    if (right_is_const and binary.left.* == .binary) self.rd = .t0 else self.rd = .t1;
+
                     try self.generateExpression(binary.right.*);
 
                     if (!right_is_const) {
@@ -362,7 +371,41 @@ pub const Generator = struct {
         }
     }
 
-    fn generateStatement(self: *Generator, statement: c_ast.Statement) !void {
+    fn generateIf(self: *Generator, if_: c_ast.If) !void {
+        var if_name_array = std.ArrayList(u8).init(self.allocator);
+        defer if_name_array.deinit();
+        try std.fmt.format(if_name_array.writer(), "if_end_{d}", .{self.if_counter});
+        const if_name = try if_name_array.toOwnedSlice();
+        var else_name_array = std.ArrayList(u8).init(self.allocator);
+        defer else_name_array.deinit();
+        try std.fmt.format(else_name_array.writer(), "else_end_{d}", .{self.if_counter});
+        const else_name = try else_name_array.toOwnedSlice();
+        self.if_counter += 1;
+
+        self.rd = .t0;
+        try self.generateExpression(if_.condition);
+
+        self.rs1 = .zero;
+        self.rs2 = .t1;
+        self.label = if_name;
+        self.appendInstr(.BEQ);
+
+        try self.generateStatement(if_.then.*);
+        if (if_.else_ != null) {
+            self.label = else_name;
+            self.appendInstr(.JAL);
+        }
+
+        try self.appendLabel(if_name);
+
+        if (if_.else_ != null) {
+            try self.generateStatement(if_.else_.?.*);
+
+            try self.appendLabel(else_name);
+        }
+    }
+
+    fn generateStatement(self: *Generator, statement: c_ast.Statement) anyerror!void {
         switch (statement) {
             .ret => |ret| {
                 try self.generateExpression(ret.exp);
@@ -371,42 +414,98 @@ pub const Generator = struct {
                 try self.generateExpression(exp);
             },
             .if_ => |if_| {
-                var if_name_array = std.ArrayList(u8).init(self.allocator);
-                defer if_name_array.deinit();
-                try std.fmt.format(if_name_array.writer(), "if_end_{d}", .{self.if_counter});
-                const if_name = try if_name_array.toOwnedSlice();
-                var else_name_array = std.ArrayList(u8).init(self.allocator);
-                defer else_name_array.deinit();
-                try std.fmt.format(else_name_array.writer(), "else_end_{d}", .{self.if_counter});
-                const else_name = try else_name_array.toOwnedSlice();
+                try self.generateIf(if_);
+            },
+            .compound => |compound| {
+                for (compound.block_items) |block_item| {
+                    switch (block_item) {
+                        .statement => {
+                            try self.generateStatement(block_item.statement);
+                        },
+                        .declaration => {
+                            try self.generateDeclaration(block_item.declaration);
+                        },
+                    }
+                }
+            },
+            .break_ => |break_| {
+                const identifier = try std.fmt.allocPrint(self.allocator, "break_{s}", .{break_.identifier.?});
 
-                try self.generateExpression(if_.condition);
+                self.label = identifier;
+                self.appendInstr(.JAL);
+            },
+            .continue_ => |continue_| {
+                const identifier = try std.fmt.allocPrint(self.allocator, "continue_{s}", .{continue_.identifier.?});
 
-                self.rs1 = .zero;
-                self.label = if_name;
+                self.label = identifier;
+                self.appendInstr(.JAL);
+            },
+            .do_while => |do_while| {
+                const identifier_start = try std.fmt.allocPrint(self.allocator, "{s}_start", .{do_while.identifier.?});
+                const identifier_continue = try std.fmt.allocPrint(self.allocator, "continue_{s}", .{do_while.identifier.?});
+                const identifier_break = try std.fmt.allocPrint(self.allocator, "break_{s}", .{do_while.identifier.?});
+                try self.appendLabel(identifier_start);
+
+                try self.generateStatement(do_while.body.*);
+                try self.appendLabel(identifier_continue);
+
+                try self.generateExpression(do_while.condition);
+
+                self.rs1 = .t1;
+                self.rs2 = .zero;
+                self.label = identifier_start;
+                self.appendInstr(.BNE);
+
+                try self.appendLabel(identifier_break);
+            },
+            .for_ => |for_| {
+                const identifier_start = try std.fmt.allocPrint(self.allocator, "{s}_start", .{for_.identifier.?});
+                const identifier_continue = try std.fmt.allocPrint(self.allocator, "continue_{s}", .{for_.identifier.?});
+                const identifier_break = try std.fmt.allocPrint(self.allocator, "break_{s}", .{for_.identifier.?});
+
+                switch (for_.init) {
+                    .init_decl => try self.generateDeclaration(for_.init.init_decl),
+                    .init_exp => if (for_.init.init_exp != null) try self.generateExpression(for_.init.init_exp.?),
+                }
+
+                try self.appendLabel(identifier_start);
+
+                if (for_.condition != null) try self.generateExpression(for_.condition.?);
+
+                self.rs1 = .t1;
+                self.rs2 = .zero;
+                self.label = identifier_break;
                 self.appendInstr(.BEQ);
 
-                try self.generateStatement(if_.then.*);
-                if (if_.else_ != null) {
-                    self.label = else_name;
-                    self.appendInstr(.JAL);
-                }
+                try self.generateStatement(for_.body.*);
 
-                try self.instruction_buffer.append(
-                    .{
-                        .label = .{ .name = if_name },
-                    },
-                );
+                try self.appendLabel(identifier_continue);
 
-                if (if_.else_ != null) {
-                    try self.generateStatement(if_.else_.?.*);
+                if (for_.post != null) try self.generateExpression(for_.post.?);
 
-                    try self.instruction_buffer.append(
-                        .{
-                            .label = .{ .name = else_name },
-                        },
-                    );
-                }
+                self.label = identifier_start;
+                self.appendInstr(.JAL);
+
+                try self.appendLabel(identifier_break);
+            },
+            .while_ => |while_| {
+                const identifier_continue = try std.fmt.allocPrint(self.allocator, "continue_{s}", .{while_.identifier.?});
+                const identifier_break = try std.fmt.allocPrint(self.allocator, "break_{s}", .{while_.identifier.?});
+                try self.appendLabel(identifier_continue);
+
+                try self.generateExpression(while_.condition);
+
+                self.rs1 = .t1;
+                self.rs2 = .zero;
+                self.label = identifier_break;
+                self.appendInstr(.BEQ);
+
+                try self.generateStatement(while_.body.*);
+
+                self.label = identifier_continue;
+                self.appendInstr(.JAL);
+
+                try self.appendLabel(identifier_break);
             },
         }
     }
@@ -416,8 +515,8 @@ pub const Generator = struct {
             self.rd = .t1;
             try self.generateExpression(declaration.initial.?);
             self.rd = .t0;
-            try self.loadImmediate(0);
-            self.immediate = try self.getVariableId(declaration.identifier);
+            try self.loadImmediate(try self.getVariableId(declaration.identifier));
+            self.immediate = 0;
             self.rs1 = .t1;
             self.rs2 = .t0;
             self.appendInstr(.SW);
@@ -425,7 +524,7 @@ pub const Generator = struct {
     }
 
     pub fn generate(self: *Generator) !asm_ast.Program {
-        for (self.program.function.block_items) |block_item| {
+        for (self.program.function.block.block_items) |block_item| {
             switch (block_item) {
                 .statement => {
                     try self.generateStatement(block_item.statement);
@@ -446,7 +545,7 @@ pub const Generator = struct {
         }
 
         if (has_btype) {
-            try self.instruction_buffer.append(.{ .label = .{ .name = "end" } });
+            try self.appendLabel("end");
         }
         // --
 

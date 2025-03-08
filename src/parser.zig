@@ -44,16 +44,22 @@ pub const Parser = struct {
         self.expect(.LEFT_BRACE);
         self.cursor += 1;
 
+        return .{
+            .identifier = identifier,
+            .block = self.parseBlock(),
+        };
+    }
+
+    fn parseBlock(self: *Parser) c_ast.Block {
         var function_body = std.ArrayList(c_ast.BlockItem).init(self.allocator);
 
         while (self.tokens[self.cursor].type != .RIGHT_BRACE) {
-            const block_item = self.parseBlockItem();
+            const block_item = self.parseBlockItem() catch @panic("Failed to parse block item");
             function_body.append(block_item) catch @panic("Failed to allocate memory");
             self.cursor += 1;
         }
 
         return .{
-            .identifier = identifier,
             .block_items = function_body.toOwnedSlice() catch @panic("Failed to allocate memory"),
         };
     }
@@ -61,12 +67,12 @@ pub const Parser = struct {
     // the thing i was thinking about
     // the assignment expression expects 2 expressions
     // it's part of the lvalue thing, the validity of the first expression will be evaluated later
-    fn parseBlockItem(self: *Parser) c_ast.BlockItem {
+    fn parseBlockItem(self: *Parser) !c_ast.BlockItem {
         switch (self.tokens[self.cursor].type) {
             .INT => {
                 return .{ .declaration = self.parseDeclaration() };
             },
-            else => return .{ .statement = self.parseStatement() },
+            else => return .{ .statement = try self.parseStatement() },
         }
     }
 
@@ -91,52 +97,150 @@ pub const Parser = struct {
 
     // fn parseIf(self: *Parser) c_ast.If {}
 
-    fn parseStatement(self: *Parser) c_ast.Statement {
-        if (self.tokens[self.cursor].type == .RETURN) {
-            self.cursor += 1;
+    fn parseStatement(self: *Parser) !c_ast.Statement {
+        switch (self.tokens[self.cursor].type) {
+            .RETURN => {
+                self.cursor += 1;
 
-            // ??????????????
-            // ??????????????
-            const expr_ptr = self.parseExpression(0) catch @panic("Failed to parse expression");
-            const expr = expr_ptr.*;
-            self.allocator.destroy(expr_ptr);
-            return .{
-                .ret = .{ .exp = expr },
-            };
-        } else if (self.tokens[self.cursor].type == .IF) {
-            self.cursor += 1;
-            self.expect(.LEFT_PAREN);
-            self.cursor += 1;
-            const condition = self.parseExpression(0) catch @panic("Failed to parse expression");
-            self.expect(.RIGHT_PAREN);
-            self.cursor += 1;
+                // ??????????????
+                // ??????????????
+                const expr_ptr = self.parseExpression(0) catch @panic("Failed to parse expression");
+                const expr = expr_ptr.*;
+                self.allocator.destroy(expr_ptr);
+                return .{
+                    .ret = .{ .exp = expr },
+                };
+            },
+            .IF => {
+                self.cursor += 1;
+                self.expect(.LEFT_PAREN);
+                self.cursor += 1;
+                const condition = self.parseExpression(0) catch @panic("Failed to parse expression");
+                self.expect(.RIGHT_PAREN);
+                self.cursor += 1;
 
-            const then = self.parseStatement();
-            const then_ptr = self.allocator.create(c_ast.Statement) catch @panic("Failed to allocate memory");
-            then_ptr.* = then;
+                const then = try self.parseStatement();
+                const then_ptr = self.allocator.create(c_ast.Statement) catch @panic("Failed to allocate memory");
+                then_ptr.* = then;
 
-            var else_ptr: ?*c_ast.Statement = null;
-            if (self.tokens[self.cursor + 1].type == .ELSE) {
-                self.cursor += 2;
-                const else_ = self.parseStatement();
-                else_ptr = self.allocator.create(c_ast.Statement) catch @panic("Failed to allocate memory");
-                else_ptr.?.* = else_;
-            }
+                var else_ptr: ?*c_ast.Statement = null;
 
-            return .{
-                .if_ = .{
-                    .condition = condition.*,
-                    .then = then_ptr,
-                    .else_ = else_ptr,
-                },
-            };
-        } else {
-            const expr_ptr = self.parseExpression(0) catch @panic("Failed to parse expression");
-            const expr = expr_ptr.*;
-            self.allocator.destroy(expr_ptr);
-            return .{
-                .exp = expr,
-            };
+                if (self.tokens[self.cursor + 1].type == .ELSE) {
+                    self.cursor += 2;
+                    const else_ = try self.parseStatement();
+                    else_ptr = self.allocator.create(c_ast.Statement) catch @panic("Failed to allocate memory");
+                    else_ptr.?.* = else_;
+                }
+                return .{
+                    .if_ = .{
+                        .condition = condition.*,
+                        .then = then_ptr,
+                        .else_ = else_ptr,
+                    },
+                };
+            },
+            .LEFT_BRACE => {
+                self.cursor += 1;
+                const block = self.parseBlock();
+                return .{
+                    .compound = block,
+                };
+            },
+            .BREAK => {
+                self.cursor += 1;
+                return .{
+                    .break_ = .{ .identifier = null },
+                };
+            },
+            .CONTINUE => {
+                self.cursor += 1;
+                return .{
+                    .continue_ = .{ .identifier = null },
+                };
+            },
+            .WHILE => {
+                self.cursor += 1;
+                self.expect(.LEFT_PAREN);
+                const condition = try self.parseExpression(0);
+                const body = try self.parseStatement();
+                const body_ptr = self.allocator.create(c_ast.Statement) catch @panic("Failed to allocate memory");
+                body_ptr.* = body;
+                return c_ast.Statement{
+                    .while_ = .{
+                        .body = body_ptr,
+                        .identifier = null,
+                        .condition = condition.*,
+                    },
+                };
+            },
+            .DO => {
+                self.cursor += 1;
+                const body = try self.parseStatement();
+                const body_ptr = self.allocator.create(c_ast.Statement) catch @panic("Failed to allocate memory");
+                body_ptr.* = body;
+
+                self.cursor += 1;
+                self.expect(.WHILE);
+                self.cursor += 1;
+                self.expect(.LEFT_PAREN);
+                const condition = try self.parseExpression(0);
+
+                return c_ast.Statement{
+                    .do_while = .{
+                        .body = body_ptr,
+                        .condition = condition.*,
+                        .identifier = null,
+                    },
+                };
+            },
+            .FOR => {
+                self.cursor += 1;
+                self.expect(.LEFT_PAREN);
+                self.cursor += 1;
+
+                var for_init: c_ast.ForInit = undefined;
+                if (self.tokens[self.cursor].type == .INT) {
+                    for_init = .{ .init_decl = self.parseDeclaration() };
+                } else {
+                    const expression = try self.parseExpression(0);
+                    for_init = .{ .init_exp = expression.* };
+                }
+
+                var condition: ?*c_ast.Expression = null;
+                if (self.tokens[self.cursor].type != .RIGHT_PAREN) {
+                    self.cursor += 1;
+                    condition = try self.parseExpression(0);
+                }
+
+                var post: ?*c_ast.Expression = null;
+                if (self.tokens[self.cursor].type != .RIGHT_PAREN) {
+                    self.cursor += 1;
+                    post = try self.parseExpression(0);
+                }
+
+                self.cursor += 1;
+                const body = try self.parseStatement();
+                const body_ptr = try self.allocator.create(c_ast.Statement);
+                body_ptr.* = body;
+
+                return c_ast.Statement{
+                    .for_ = .{
+                        .init = for_init,
+                        .condition = if (condition != null) condition.?.* else null,
+                        .post = if (post != null) post.?.* else null,
+                        .body = body_ptr,
+                        .identifier = null,
+                    },
+                };
+            },
+            else => {
+                const expr_ptr = self.parseExpression(0) catch @panic("Failed to parse expression");
+                const expr = expr_ptr.*;
+                self.allocator.destroy(expr_ptr);
+                return .{
+                    .exp = expr,
+                };
+            },
         }
     }
 
@@ -151,7 +255,6 @@ pub const Parser = struct {
 
             if (self.tokens[self.cursor].type == .EQUAL) {
                 self.cursor += 1;
-
                 const right = try self.parseExpression(curr_prec);
 
                 const new_expr = try self.allocator.create(c_ast.Expression);
@@ -165,8 +268,8 @@ pub const Parser = struct {
                 left = new_expr;
             }
             // check inplace operators
-            // in place operators can only be used at the start of a line. therefore only run if the token 2 positions ago is on a different line
-            else if (tokens_script.is_in_place_starter(self.tokens[self.cursor].type) == true and self.tokens[self.cursor - 1].type == .IDENTIFIER and self.tokens[self.cursor - 2].line != self.tokens[self.cursor].line) {
+            //
+            else if (tokens_script.is_in_place_starter(self.tokens[self.cursor].type) == true and self.tokens[self.cursor - 1].type == .IDENTIFIER and self.tokens[self.cursor + 1].type == .EQUAL) {
                 const operator = self.parseBinop();
                 self.cursor += 1;
                 self.expect(.EQUAL);

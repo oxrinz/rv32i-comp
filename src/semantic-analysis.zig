@@ -1,6 +1,7 @@
 const std = @import("std");
 const c_ast = @import("ast/c.zig");
 const VariableResolution = @import("semantic/variable-resolution.zig").VariableResolution;
+const LoopLabeling = @import("semantic/loop-labeling.zig").LoopLabeling;
 
 pub const SemanticAnalysis = struct {
     allocator: std.mem.Allocator,
@@ -11,7 +12,8 @@ pub const SemanticAnalysis = struct {
     pub fn analyze(self: *SemanticAnalysis, program: c_ast.Program) c_ast.Program {
         var variable_resolution = VariableResolution.init(self.allocator);
 
-        return variable_resolution.resolve(program);
+        var loop_labeling = LoopLabeling.init(self.allocator);
+        return loop_labeling.label(variable_resolution.resolve(program));
     }
 };
 

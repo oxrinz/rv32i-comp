@@ -61,6 +61,12 @@ pub const TokenType = enum {
     CARET,
     LEFT_SHIFT,
     RIGHT_SHIFT,
+
+    WHILE,
+    DO,
+    FOR,
+    BREAK,
+    CONTINUE,
 };
 
 pub const Literal = union(enum) { string: []const u8, number: i32 };

@@ -13,8 +13,10 @@ Compiles a silly made up language (c) to RV32I assembly. To be used with [rv32i-
 - [x] Variables
 - [x] In-place operators
 - [x] If statements
-- [ ] ? operator
-- [ ] Loops
+- [ ] ? operator (probably won't be implemented)
+- [x] Correct scoping
+- [x] Loops
+- [ ] Switch case (also most likely won't be implemented)
 - [ ] Functions
 - [ ] Long int
 - [ ] Unsigned int
