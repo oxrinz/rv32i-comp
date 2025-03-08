@@ -16,12 +16,13 @@ Compiles a silly made up language (c) to RV32I assembly. To be used with [rv32i-
 - [ ] ? operator (probably won't be implemented)
 - [x] Correct scoping
 - [x] Loops
-- [ ] Switch case (also most likely won't be implemented)
+- [ ] Switch cases (also most likely won't be implemented)
 - [ ] Functions
+- [ ] Multiple files
 - [ ] Long int
 - [ ] Unsigned int
 - [ ] Pointers
 - [ ] Arrays
 - [ ] Strings & characters
 - [ ] Memory allocation
-- [ ] Structs
+- [ ] Structs 
