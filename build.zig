@@ -30,6 +30,12 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
 
+    const testing_module = b.addModule("testing", .{
+        .root_source_file = .{ .cwd_relative = "src/testing.zig" },
+    });
+
+    exe_unit_tests.root_module.addImport("testing", testing_module);
+
     const run_exe_unit_tests = b.addRunArtifact(exe_unit_tests);
 
     const test_step = b.step("test", "Run unit tests");

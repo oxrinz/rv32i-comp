@@ -16,7 +16,7 @@ pub fn EnumMethods(comptime T: type) type {
 }
 
 // TODO: there has to be a cleaner way to do this
-pub fn convert(instr: InstructionType) union(enum) { rtype: RType_Inst, itype: IType_Inst, btype: BType_Inst, stype: SType_Inst, jtype: JType_Inst } {
+pub fn convert(instr: InstructionType) union(enum) { rtype: RType_Inst, itype: IType_Inst, btype: BType_Inst, stype: SType_Inst, utype: UType_Inst, jtype: JType_Inst } {
     const instr_name = @tagName(instr);
 
     inline for (@typeInfo(RType_Inst).Enum.fields) |field| {
@@ -43,6 +43,12 @@ pub fn convert(instr: InstructionType) union(enum) { rtype: RType_Inst, itype: I
         }
     }
 
+    inline for (@typeInfo(UType_Inst).Enum.fields) |field| {
+        if (std.mem.eql(u8, instr_name, field.name)) {
+            return .{ .utype = @field(UType_Inst, field.name) };
+        }
+    }
+
     inline for (@typeInfo(JType_Inst).Enum.fields) |field| {
         if (std.mem.eql(u8, instr_name, field.name)) {
             return .{ .jtype = @field(JType_Inst, field.name) };
@@ -56,11 +62,21 @@ pub fn convert(instr: InstructionType) union(enum) { rtype: RType_Inst, itype: I
 
 pub const Reg = enum {
     zero,
+    ra,
+    sp,
     t0,
     t1,
     t2,
-    t3,
+    fp,
     a0,
+    a1,
+    a2,
+    a3,
+    a4,
+    a5,
+    a6,
+    a7,
+    t3,
 
     pub fn toString(self: Reg) []const u8 {
         return @tagName(self);
@@ -71,11 +87,6 @@ const Addi = struct {
     source: Reg,
     destination: Reg,
     imm: u12,
-};
-
-const Lui = struct {
-    destination: Reg,
-    imm: u20,
 };
 
 pub const InstructionType = enum {
@@ -126,7 +137,11 @@ pub const InstructionType = enum {
     BLTU,
     BGEU,
 
+    LUI,
+    AUIPC,
+
     JAL,
+    JALR,
 };
 
 pub const RType_Inst = enum {
@@ -179,6 +194,8 @@ pub const IType_Inst = enum {
     LBU,
     LHU,
 
+    JALR,
+
     pub usingnamespace EnumMethods(IType_Inst);
 };
 
@@ -201,41 +218,54 @@ pub const SType_Inst = enum {
     pub usingnamespace EnumMethods(SType_Inst);
 };
 
+pub const UType_Inst = enum {
+    LUI,
+    AUIPC,
+
+    pub usingnamespace EnumMethods(UType_Inst);
+};
+
 pub const JType_Inst = enum {
     JAL,
 
     pub usingnamespace EnumMethods(JType_Inst);
 };
 
-const RType = struct {
+pub const RType = struct {
     instr: RType_Inst,
     source1: Reg,
     source2: Reg,
     destination: Reg,
 };
 
-const IType = struct {
+pub const IType = struct {
     instr: IType_Inst,
     source: Reg,
     destination: Reg,
     immediate: i32,
 };
 
-const BType = struct {
+pub const BType = struct {
     instr: BType_Inst,
     source1: Reg,
     source2: Reg,
     label: []const u8,
 };
 
-const SType = struct {
+pub const SType = struct {
     instr: SType_Inst,
     source1: Reg,
     source2: Reg,
     immediate: i32,
 };
 
-const JType = struct {
+pub const UType = struct {
+    instr: UType_Inst,
+    destination: Reg,
+    immediate: i32,
+};
+
+pub const JType = struct {
     instr: JType_Inst,
     destination: Reg,
     label: []const u8,
@@ -250,10 +280,8 @@ pub const Instruction = union(enum) {
     itype: IType,
     stype: SType,
     btype: BType,
-    // utype: UType,
+    utype: UType,
     jtype: JType,
-
-    lui: Lui,
 
     label: Label,
 };

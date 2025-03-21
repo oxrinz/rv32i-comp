@@ -1,16 +1,18 @@
 const std = @import("std");
 const builtin = @import("builtin");
-const testing = std.testing;
-const Lexer = @import("lexer.zig").Lexer;
-const Parser = @import("parser.zig").Parser;
-const SemanticAnalysis = @import("semantic-analysis.zig").SemanticAnalysis;
-const Generator = @import("gen.zig").Generator;
-const Emitter = @import("emission.zig").Emitter;
+const testing = @import("testing.zig");
+const Lexer = @import("frontend/lexer.zig").Lexer;
+const Parser = @import("frontend/parser.zig").Parser;
+const SemanticAnalysis = @import("frontend/semantic-analysis.zig").SemanticAnalysis;
+const Generator = @import("middleend/gen.zig").Generator;
+const Emitter = @import("backend/emission.zig").Emitter;
+const diagnostics = @import("diagnostics.zig");
 const prettyprinter = @import("prettyprinter.zig");
 
 pub fn main() !void {
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
+    defer diagnostics.arena.deinit();
     const allocator = arena.allocator();
 
     const debug_str = std.process.getEnvVarOwned(allocator, "DEBUG") catch "";
@@ -44,7 +46,10 @@ pub fn main() !void {
         std.process.exit(1);
     }
 
-    const assembly: []const u8 = generate(source, allocator, debug_value) catch @panic("Failed to generate assembly");
+    const assembly: []const u8 = generate(source, allocator, debug_value) catch {
+        diagnostics.printAll();
+        std.process.exit(1);
+    };
 
     const dirname = std.fs.path.dirname(file_path) orelse ".";
     const stem = std.fs.path.stem(file_path);
@@ -81,7 +86,7 @@ fn generate(input: []const u8, allocator: std.mem.Allocator, debug_value: i32) !
     }
 
     var parser = Parser.init(lexer.tokens.items, allocator);
-    const program_definition = parser.parse();
+    const program_definition = try parser.parse();
 
     if (debug_value == 1 and builtin.is_test == false) {
         std.debug.print("\n======== Program ========\n", .{});
@@ -90,7 +95,9 @@ fn generate(input: []const u8, allocator: std.mem.Allocator, debug_value: i32) !
     }
 
     var semantic = SemanticAnalysis.init(allocator);
-    const analyzed_program_definition = semantic.analyze(program_definition);
+    const analyzed_program_definition = semantic.analyze(program_definition) catch |err| {
+        return err;
+    };
 
     if (debug_value == 1 and builtin.is_test == false) {
         std.debug.print("\n=== Semantic analysis ===\n", .{});
@@ -107,9 +114,6 @@ fn generate(input: []const u8, allocator: std.mem.Allocator, debug_value: i32) !
 }
 
 test "basic addition" {
-    var arena = std.heap.ArenaAllocator.init(testing.allocator);
-    defer arena.deinit();
-
     const input =
         \\int main()
         \\{
@@ -117,180 +121,67 @@ test "basic addition" {
         \\}
     ;
 
-    const actual = try generate(input, arena.allocator(), 0);
-    const expected =
-        \\lui t0 0
-        \\addi t0 t0 2
-        \\lui t1 0
-        \\addi t1 t1 6
-        \\add t1 t0 t1
-        \\
-    ;
+    const check = testing.WireCheck{
+        .tick = 10,
+        .wire = "alu_inst.rd_data",
+        .value = 8,
+    };
 
-    try std.testing.expectEqualStrings(expected, actual);
+    try testing.testWithSystemVerilog("basic_addition", input, &[_]testing.WireCheck{check});
 }
 
-test "less or equal" {
-    var arena = std.heap.ArenaAllocator.init(testing.allocator);
-    defer arena.deinit();
-
+test "basic precedence" {
     const input =
         \\int main()
         \\{
-        \\ return 2 <= 6;
+        \\ return 10 - 6 + 2 * 4;
         \\}
     ;
 
-    const actual = try generate(input, arena.allocator(), 0);
-    const expected =
-        \\lui t0 0
-        \\addi t0 t0 2
-        \\lui t1 0
-        \\addi t1 t1 6
-        \\slt t1 t1 t0
-        \\xori t1 t1 1
-        \\
-    ;
+    const check = testing.WireCheck{
+        .tick = 18,
+        .wire = "alu_inst.rd_data",
+        .value = 12,
+    };
 
-    try std.testing.expectEqualStrings(expected, actual);
+    try testing.testWithSystemVerilog("basic_precedence", input, &[_]testing.WireCheck{check});
 }
 
-test "less" {
-    var arena = std.heap.ArenaAllocator.init(testing.allocator);
-    defer arena.deinit();
-
+test "basic precedence 2" {
     const input =
         \\int main()
         \\{
-        \\ return 2 < 6;
+        \\ return 20 - 6 * (4 - 2);
         \\}
     ;
 
-    const actual = try generate(input, arena.allocator(), 0);
-    const expected =
-        \\lui t0 0
-        \\addi t0 t0 2
-        \\lui t1 0
-        \\addi t1 t1 6
-        \\slt t1 t0 t1
-        \\
-    ;
+    const check = testing.WireCheck{
+        .tick = 18,
+        .wire = "alu_inst.rd_data",
+        .value = 8,
+    };
 
-    try std.testing.expectEqualStrings(expected, actual);
+    try testing.testWithSystemVerilog("basic_precedence_2", input, &[_]testing.WireCheck{check});
 }
 
-test "greater or equal" {
-    var arena = std.heap.ArenaAllocator.init(testing.allocator);
-    defer arena.deinit();
-
+test "and short circuit 1" {
     const input =
         \\int main()
         \\{
-        \\ return 2 >= 6;
+        \\    return 20 == 20 && 10 != 5;
         \\}
     ;
 
-    const actual = try generate(input, arena.allocator(), 0);
-    const expected =
-        \\lui t0 0
-        \\addi t0 t0 2
-        \\lui t1 0
-        \\addi t1 t1 6
-        \\slt t1 t0 t1
-        \\xori t1 t1 1
-        \\
-    ;
+    const check = testing.WireCheck{
+        .tick = 24,
+        .wire = "instr_mem.addr",
+        .value = 12,
+    };
 
-    try std.testing.expectEqualStrings(expected, actual);
-}
-
-test "greater" {
-    var arena = std.heap.ArenaAllocator.init(testing.allocator);
-    defer arena.deinit();
-
-    const input =
-        \\int main()
-        \\{
-        \\ return 2 > 6;
-        \\}
-    ;
-
-    const actual = try generate(input, arena.allocator(), 0);
-    const expected =
-        \\lui t0 0
-        \\addi t0 t0 2
-        \\lui t1 0
-        \\addi t1 t1 6
-        \\slt t1 t1 t0
-        \\
-    ;
-
-    try std.testing.expectEqualStrings(expected, actual);
-}
-
-test "equal" {
-    var arena = std.heap.ArenaAllocator.init(testing.allocator);
-    defer arena.deinit();
-
-    const input =
-        \\int main()
-        \\{
-        \\ return 2 == 6;
-        \\}
-    ;
-
-    const actual = try generate(input, arena.allocator(), 0);
-    const expected =
-        \\lui t0 0
-        \\addi t0 t0 2
-        \\lui t1 0
-        \\addi t1 t1 6
-        \\sub t1 t0 t1
-        \\sltiu t1 t1 1
-        \\
-    ;
-
-    try std.testing.expectEqualStrings(expected, actual);
-}
-
-test "not equal" {
-    var arena = std.heap.ArenaAllocator.init(testing.allocator);
-    defer arena.deinit();
-
-    const input =
-        \\int main()
-        \\{
-        \\ return 2 != 6;
-        \\}
-    ;
-
-    const actual = try generate(input, arena.allocator(), 0);
-    const expected =
-        \\lui t0 0
-        \\addi t0 t0 2
-        \\lui t1 0
-        \\addi t1 t1 6
-        \\sub t1 t0 t1
-        \\sltiu t1 t1 1
-        \\xori t1 t1 1
-        \\
-    ;
-
-    try std.testing.expectEqualStrings(expected, actual);
+    try testing.testWithSystemVerilog("and_short_circuit_1", input, &[_]testing.WireCheck{check});
 }
 
 test "or short circuit 1" {
-    const input =
-        \\int main()
-        \\{
-        \\    return 5 < 3 || 2 == 2 || 2 == 3;
-        \\}
-    ;
-
-    try testCToAssembly(input, "../shared_tests/or_short_circuit_1.asm");
-}
-
-test "or short circuit 2" {
     const input =
         \\int main()
         \\{
@@ -298,10 +189,16 @@ test "or short circuit 2" {
         \\}
     ;
 
-    try testCToAssembly(input, "../shared_tests/or_short_circuit_2.asm");
+    const check = testing.WireCheck{
+        .tick = 50,
+        .wire = "instr_mem.addr",
+        .value = 30,
+    };
+
+    try testing.testWithSystemVerilog("or_short_circuit_1", input, &[_]testing.WireCheck{check});
 }
 
-test "and short circuit 1" {
+test "and short circuit 2" {
     const input =
         \\int main()
         \\{
@@ -309,7 +206,13 @@ test "and short circuit 1" {
         \\}
     ;
 
-    try testCToAssembly(input, "../shared_tests/and_short_circuit_1.asm");
+    const check = testing.WireCheck{
+        .tick = 26,
+        .wire = "instr_mem.addr",
+        .value = 16,
+    };
+
+    try testing.testWithSystemVerilog("and_short_circuit_2", input, &[_]testing.WireCheck{check});
 }
 
 test "variables 1" {
@@ -318,12 +221,18 @@ test "variables 1" {
         \\{
         \\    int beh = 5 + 1;
         \\    int bah = beh - 1 * 2;
-        \\    return bah + 1;
+        \\    return bah + 8;
         \\}
         \\
     ;
 
-    try testCToAssembly(input, "../shared_tests/variables_1.asm");
+    const check = testing.WireCheck{
+        .tick = 38,
+        .wire = "alu_inst.rd_data",
+        .value = 12,
+    };
+
+    try testing.testWithSystemVerilog("variables_1", input, &[_]testing.WireCheck{check});
 }
 
 test "variables 2" {
@@ -338,21 +247,13 @@ test "variables 2" {
         \\
     ;
 
-    try testCToAssembly(input, "../shared_tests/variables_2.asm");
-}
+    const check = testing.WireCheck{
+        .tick = 54,
+        .wire = "alu_inst.rd_data",
+        .value = 16,
+    };
 
-test "in place operators" {
-    const input =
-        \\int main()
-        \\{
-        \\    int beh = 10;
-        \\    int baaah = 5;
-        \\    beh -= baaah - 3;
-        \\} 
-        \\
-    ;
-
-    try testCToAssembly(input, "../shared_tests/in_place_operators.asm");
+    try testing.testWithSystemVerilog("variables_2", input, &[_]testing.WireCheck{check});
 }
 
 test "if 1" {
@@ -368,7 +269,13 @@ test "if 1" {
         \\
     ;
 
-    try testCToAssembly(input, "../shared_tests/if_1.asm");
+    const check = testing.WireCheck{
+        .tick = 34,
+        .wire = "instr_mem.addr",
+        .value = 21,
+    };
+
+    try testing.testWithSystemVerilog("if_1", input, &[_]testing.WireCheck{check});
 }
 
 test "if 2" {
@@ -387,7 +294,13 @@ test "if 2" {
         \\
     ;
 
-    try testCToAssembly(input, "../shared_tests/if_2.asm");
+    const check = testing.WireCheck{
+        .tick = 38,
+        .wire = "instr_mem.addr",
+        .value = 23,
+    };
+
+    try testing.testWithSystemVerilog("if_2", input, &[_]testing.WireCheck{check});
 }
 
 test "if 3" {
@@ -403,7 +316,13 @@ test "if 3" {
         \\
     ;
 
-    try testCToAssembly(input, "../shared_tests/if_3.asm");
+    const check = testing.WireCheck{
+        .tick = 26,
+        .wire = "alu_inst.rd_data",
+        .value = 62,
+    };
+
+    try testing.testWithSystemVerilog("if_3", input, &[_]testing.WireCheck{check});
 }
 
 test "compound if 1" {
@@ -428,7 +347,13 @@ test "compound if 1" {
         \\
     ;
 
-    try testCToAssembly(input, "../shared_tests/compound_if_1.asm");
+    const check = testing.WireCheck{
+        .tick = 48,
+        .wire = "alu_inst.rd_data",
+        .value = 14,
+    };
+
+    try testing.testWithSystemVerilog("compund_if_1", input, &[_]testing.WireCheck{check});
 }
 
 test "multiple scopes variable resolution" {
@@ -455,10 +380,11 @@ test "multiple scopes variable resolution" {
     var lexer = Lexer.init(allocator, input);
     lexer.scan();
     var parser = Parser.init(lexer.tokens.items, allocator);
-    const program_definition = parser.parse();
+    const program_definition = try parser.parse();
 
     var semantic = SemanticAnalysis.init(allocator);
-    const analyzed_program_definition = semantic.analyze(program_definition);
+
+    const analyzed_program_definition = try semantic.analyze(program_definition);
 
     try std.testing.expectEqualStrings("var_0", analyzed_program_definition.function[0].body.?.block_items[0].declaration.variable_declaration.identifier);
     try std.testing.expectEqualStrings("var_1", analyzed_program_definition.function[0].body.?.block_items[1].statement.compound.block_items[0].declaration.variable_declaration.identifier);
@@ -495,10 +421,10 @@ test "loop labeling" {
     var lexer = Lexer.init(allocator, input);
     lexer.scan();
     var parser = Parser.init(lexer.tokens.items, allocator);
-    const program_definition = parser.parse();
+    const program_definition = try parser.parse();
 
     var semantic = SemanticAnalysis.init(allocator);
-    const analyzed_program_definition = semantic.analyze(program_definition);
+    const analyzed_program_definition = try semantic.analyze(program_definition);
 
     try std.testing.expectEqualStrings("loop_0", analyzed_program_definition.function[0].body.?.block_items[2].statement.while_.identifier.?);
     try std.testing.expectEqualStrings("loop_1", analyzed_program_definition.function[0].body.?.block_items[2].statement.while_.body.compound.block_items[0].statement.for_.identifier.?);
@@ -519,7 +445,13 @@ test "while loop" {
         \\
     ;
 
-    try testCToAssembly(input, "../shared_tests/while_loop.asm");
+    const check = testing.WireCheck{
+        .tick = 70,
+        .wire = "instr_mem.addr",
+        .value = 18,
+    };
+
+    try testing.testWithSystemVerilog("while_loop", input, &[_]testing.WireCheck{check});
 }
 
 test "do while loop" {
@@ -530,11 +462,17 @@ test "do while loop" {
         \\    do {
         \\        a -= 2;
         \\    } while (a > 12);
-        \\} 
+        \\}
         \\
     ;
 
-    try testCToAssembly(input, "../shared_tests/do_while_loop.asm");
+    const check = testing.WireCheck{
+        .tick = 56,
+        .wire = "instr_mem.addr",
+        .value = 17,
+    };
+
+    try testing.testWithSystemVerilog("do_while_loop", input, &[_]testing.WireCheck{check});
 }
 
 test "do while break loop" {
@@ -548,11 +486,17 @@ test "do while break loop" {
         \\        if (a <= 12)
         \\            break;
         \\    } while (a > 10);
-        \\} 
+        \\}
         \\
     ;
 
-    try testCToAssembly(input, "../shared_tests/do_while_break_loop.asm");
+    const check = testing.WireCheck{
+        .tick = 72,
+        .wire = "instr_mem.addr",
+        .value = 24,
+    };
+
+    try testing.testWithSystemVerilog("do_while_break_loop", input, &[_]testing.WireCheck{check});
 }
 
 test "for continue loop" {
@@ -574,20 +518,11 @@ test "for continue loop" {
         \\
     ;
 
-    try testCToAssembly(input, "../shared_tests/for_continue_loop.asm");
-}
+    const check = testing.WireCheck{
+        .tick = 246,
+        .wire = "alu_inst.rd_data",
+        .value = 12,
+    };
 
-fn testCToAssembly(input: []const u8, expected_path: []const u8) !void {
-    var arena = std.heap.ArenaAllocator.init(testing.allocator);
-    defer arena.deinit();
-
-    const actual = try generate(input, arena.allocator(), 0);
-
-    const expected = try std.fs.cwd().readFileAlloc(
-        arena.allocator(),
-        expected_path,
-        1024 * 1024,
-    );
-
-    try std.testing.expectEqualStrings(expected, actual);
+    try testing.testWithSystemVerilog("for_continue_loop", input, &[_]testing.WireCheck{check});
 }
